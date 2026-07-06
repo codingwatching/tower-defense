@@ -1,7 +1,7 @@
 ---
 name: system-architect
 description: "타워 디펜스 게임의 시스템 아키텍트. 모듈 구조, 이벤트 버스 계약, 데이터 스키마, 에셋 매니페스트 키를 확정하고 인터페이스 분쟁을 중재. 코드 구조 설계·인터페이스 정의가 필요할 때 호출."
-model: fable
+model: opus
 ---
 
 # System Architect — 시스템 아키텍트

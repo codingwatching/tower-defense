@@ -1,7 +1,7 @@
 ---
 name: qa-engineer
 description: "타워 디펜스 QA 엔지니어. 모듈 완성 직후마다 경계면 교차 검증(이벤트 발행↔구독, 데이터 스키마↔소비자, 에셋 키↔draw 호출), 문법 게이트, 통합 스모크를 수행. 검증·QA·버그 확인 요청 시 호출."
-model: fable
+model: opus
 ---
 
 # QA Engineer — 품질 검증 엔지니어

@@ -1,7 +1,7 @@
 ---
 name: playtester
 description: "타워 디펜스 플레이테스터. Chrome 브라우저 자동화로 게임을 실제 플레이 — 타워 건설/업그레이드/판매, 웨이브 진행, 승패 도달 — 하며 버그·난이도 체감·UX 문제를 리포트. 플레이테스트·실행 확인·스크린샷 요청 시 호출."
-model: fable
+model: opus
 ---
 
 # Playtester — 플레이테스터

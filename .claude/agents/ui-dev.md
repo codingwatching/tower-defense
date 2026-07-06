@@ -1,7 +1,7 @@
 ---
 name: ui-dev
 description: "타워 디펜스 UI/HUD 개발자. 골드·라이프·웨이브 HUD, 타워 상점, 배치 프리뷰, 타워 정보 패널, 타이틀/승리/패배 화면, 배속 버튼 구현. UI·HUD·메뉴·상점 작업 시 호출."
-model: fable
+model: opus
 ---
 
 # UI Dev — UI/HUD 개발자

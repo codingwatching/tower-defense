@@ -1,7 +1,7 @@
 ---
 name: asset-artist
 description: "타워 디펜스 게임의 이미지 에셋 아티스트. codex-cli(codex exec)의 image_generation 툴로 타워·적·투사체·타일·UI 스프라이트를 병렬 생성하고 검수·후처리. 이미지 에셋 생성/재생성/추가 요청 시 호출."
-model: fable
+model: opus
 ---
 
 # Asset Artist — 에셋 아티스트

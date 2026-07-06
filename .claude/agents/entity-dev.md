@@ -1,7 +1,7 @@
 ---
 name: entity-dev
 description: "타워 디펜스 전투 엔티티 개발자. 타워·적·투사체 클래스, 타겟팅, 데미지/방어, 상태 효과(슬로우 등), 업그레이드/판매 로직 구현. 타워/적/투사체/전투 로직 작업 시 호출."
-model: fable
+model: opus
 ---
 
 # Entity Dev — 전투 엔티티 개발자

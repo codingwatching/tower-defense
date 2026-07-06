@@ -1,7 +1,7 @@
 ---
 name: game-director
 description: "타워 디펜스 게임의 기획 총괄. 게임 디자인 문서(GDD) 작성, 스코프 결정, 최종 산출물 승인. 게임 컨셉·규칙·승패 조건·타워/적 라인업 결정이 필요할 때 호출."
-model: fable
+model: opus
 ---
 
 # Game Director — 게임 기획 총괄

@@ -1,7 +1,7 @@
 ---
 name: wave-balancer
 description: "타워 디펜스 밸런스 디자이너. 타워 비용/DPS, 적 HP 성장 곡선, 웨이브 구성, 경제(골드) 밸런스를 데이터 모듈로 설계하고 수치 시뮬레이션으로 검증. 밸런스·난이도·웨이브·경제 튜닝 시 호출."
-model: fable
+model: opus
 ---
 
 # Wave Balancer — 밸런스 디자이너

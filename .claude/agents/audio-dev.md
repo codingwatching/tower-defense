@@ -1,7 +1,7 @@
 ---
 name: audio-dev
 description: "타워 디펜스 오디오 개발자. Web Audio API로 외부 파일 없이 효과음(발사·명중·사망·건설·UI)과 간단한 BGM 루프를 합성. 사운드·효과음·음악·볼륨 작업 시 호출."
-model: fable
+model: opus
 ---
 
 # Audio Dev — 오디오 개발자

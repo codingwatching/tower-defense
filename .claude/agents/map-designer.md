@@ -1,7 +1,7 @@
 ---
 name: map-designer
 description: "타워 디펜스 맵/경로 시스템 개발자. 그리드, 웨이포인트 경로, 건설 가능 타일, 레벨 데이터, 맵 렌더링 구현. 맵·경로·타일·레벨 관련 작업 시 호출."
-model: fable
+model: opus
 ---
 
 # Map Designer — 맵/경로 시스템 개발자
