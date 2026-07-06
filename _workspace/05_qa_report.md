@@ -297,3 +297,157 @@ QA 독립 스크립트 `qa-verify-data.mjs`(scratchpad) 56/56 통과 + 담당자
 | P3 | 2 (D4-1, D11-1) | 전건 종결 |
 
 **미결 0건.** 잔여 미검증: 브라우저 스모크(AC-20) 1건 — playtester 이관 (http://127.0.0.1:8123). 난이도 체감(GDD "신중한 첫 판 클리어 가능")의 최종 확정도 플레이테스트 소관.
+
+---
+
+# ═══ v2 사이클 (계약 v2.0, GDD v2.0 — 2026-07-06) ═══
+
+## [검증 회차 14] v2 선행 감사 (Task #15 개시 — 모듈 작업 전 선제) — 2026-07-06
+
+기준: 계약 v2.0 (이벤트 36종, 에셋 42키, §10 애니메이션, §11 모바일, §12 배포, §13 불변 경계), GDD v2.0 (D7~D12, AC-23~37). **결함 0건.**
+
+| # | 항목 | 판정 | 확인 방법 |
+|---|---|---|---|
+| 14-1 | §12 상대 경로 감사 게이트 (선행) | 통과 | 계약 명시 grep(선행 `/` src/href/url()/fetch/import) — 현행 전체 코드베이스 매치 0건 |
+| 14-2 | .nojekyll | 통과 | 루트 존재 (0B, architect 생성 — 계약 v2.0 §12) |
+| 14-3 | 소문자 snake_case | 통과 | 파일명(grep 정밀 — macOS find의 case-insensitive 오탐 배제) + 코드 내 assets/ 경로 문자열 대문자·공백 0건 |
+| 14-4 | window.location 조립 금지 | 통과 | src·index.html grep 0건 |
+| 14-5 | 매니페스트 v2 ↔ §5 42키 | 통과 | 독립 스크립트: 42/42 키 1:1(누락 0·계약 외 0 — 타워 12/적 정적 5/walk 쌍 5/투사체 4/맵 16), walk 5쌍 `{img, atlas}` 객체 형식·확장자 정확, 폐지 v1 타워 4키 제거 확인, 경로 위반(절대/대문자) 0 |
+| 14-6 | index.html §7 v2 | 통과 | `#btn-cancel-placement` #stage 내 hidden으로 추가(index.html:31), viewport 메타 기존재 |
+| 14-7 | zone.js 뼈대 ↔ 계약 | 통과 | JSDoc이 §3.9(틱 무이벤트)·§4.6(shape)·§8(레이어 20 내 타워→지대→적→투사체)·§1(컬렉션은 combat 소유, entities↛systems)과 정합 |
+| 14-8 | §13 불변 대조 기준선 고정 | 기록 | v1 최종본 md5 — levels.js bb1e81dc… / grid.js ddc8fe4b… / path.js 5b1e9b11… (map-designer 완료 시 diff 대조 근거) |
+
+### v2 보류 (담당 완료 통지 시 검증)
+
+| # | 경계면 | 대기 대상 |
+|---|---|---|
+| V-1 | 폐지 v1 타워 키 참조 제거 — 현행 towers.js(assetKey:'tower_arrow' 등)·tower.js:141(get(def.assetKey))·shop.js:50이 폐지 키 참조 중 (과도기 — 지금 실행 시 타워는 폴백 표시) | wave-balancer #14(assetKeys 전환) + entity-dev #13 + ui-dev |
+| V-2 | 신규 이벤트 3종(zone:created/expired, frost:nova) emit↔on + 페이로드, zone 틱 무이벤트 | entity-dev #13 → fx-dev/audio-dev |
+| V-3 | mechanism union 4종 스키마↔소비 코드 + AC-23~26 동작 | wave-balancer #14 + entity-dev #13 |
+| V-4 | 42키 실파일↔아틀라스 쌍(24키 신규분 + 아틀라스 JSON 형식 §10) + reference/ 보존(AC-30) | asset-artist #10 |
+| V-5 | getAnim 강등 체인 3단·DPR(min 2, 논리 좌표 불변)·Pointer 단일 경로(이중 리스너 금지) | engine-dev #11 |
+| V-6 | §13 불변 diff(waypoints 문자 단위·PATH 28·킬존 GRASS·신규 DECO 체비쇼프 ≥2) + decoTiles 스키마 | map-designer #12 |
+| V-7 | AC-23~37 통합 게이트 + 상대 경로 재감사(전 모듈 변경 후) | 전 모듈 완료 후 |
+
+---
+
+## [검증 회차 15] 대상: levels.js v2 데이터 조기 신호 점검 — D11 불변 선행 (map-designer #12 진행 중) — 2026-07-06
+
+작업 중 파일이 D11 불변(§13)을 건드리면 밸런스 회귀 전체가 무효화되므로 완료를 기다리지 않고 데이터만 선행 대조. **결함 0건 — 14/14 통과.**
+(기록 경위: 최초 검증·스크립트 작성은 qa-engineer-2 — 해산 정리로 원기록 제거됨. 본 기록은 인계받은 `qa-verify-d11.mjs`(scratchpad)를 qa-engineer가 코드 검토 후 직접 재실행한 결과이며, git diff 스팟체크로도 교차 확인함. 방법: v1 기준본을 git 커밋 75392d2에서 추출해 자동 대조 — 회차 14-8의 md5 기준선을 대체·강화.)
+
+| # | 항목 | 판정 | 확인 방법 |
+|---|---|---|---|
+| 15-1 | waypoints 문자 단위 동일 + §13 명시 좌표 일치 | 통과 | JSON 직렬화 v1==v2 == (0,2)→(4,2)→(4,7)→(8,7)→(8,2)→(12,2)→(12,5)→(14,5) (D11-A/B) |
+| 15-2 | PATH 타일 집합 28개 동일 | 통과 | 양방향 차집합 0건 (D11-C) |
+| 15-3 | 킬존 19타일 전부 GRASS | 통과 | A(col5~7×row3~6)12 + B(col9~11×row3~4)6 + (13,4)1 — 위반 0 (D11-D) |
+| 15-4 | 신규 DECO 5타일 체비쇼프 ≥ 2 | 통과 | (6,0)d=2 (14,0)d=2 (0,6)d=4 (14,8)d=3 (0,9)d=4 — 전 PATH 대비 최솟값 기계 판정 (D11-E). (6,0)→(4,2) d=2 수동 재계산 일치 |
+| 15-5 | v1 DECO 4개 위치 유지 | 통과 | (2,0)(13,0)(1,8)(10,9) 전부 DECO 유지 — 역방향 전환 없음 (D11-F) |
+| 15-6 | decoTiles 스키마 §4.5-v2 | 통과 | 전 항목 key ∈ deco_* 4종, 지시 타일 전부 TILE.DECO, 미등재 DECO 0건 (V2-A/B/C) |
+| 15-7 | grid.js·path.js 로직 불변 | 통과 | git diff 75392d2 대비 0건 (D11-G) |
+| 15-8 | 규격·필수 필드 회귀 | 통과 | 15×10×64, tiles[10][15] 도메인 {0,1,2}, entrance/goal==waypoints 양끝 (V2-D/E/F). 동적 import 성공 = 파스 게이트 겸함 |
+
+- **V-6 부분 해소** (levels.js 데이터 측). 잔여: tilemap.js 렌더 로직(잔디 해시·길 방향 판별 §4.5-v2)·에셋 키 호출 대조 — map-designer #12 완료 통지 시. levels.js가 이후 재변경되면 본 회차 무효, 재실행.
+- 정보: 길 방향 타일 PNG 6종(tile_path_h/v/ne/nw/se/sw) 실파일 존재 확인 — 잔디 변형 2종·장식 3종은 미생성 (V-4에서 42키 전수 대조, 폴백으로 결함 아님).
+
+---
+
+## [검증 회차 16] v2 전 모듈 경계면 (Task #11~14, #16~18 완료분 — 선제 포함) — 2026-07-06
+
+기준: 계약 v2.0. 검증 도중 파일이 갱신되어(작업 병행) 최종 상태 기준으로 재검증함. **P2 1건, P3 1건, 그 외 통과.**
+
+### 통과 항목
+
+| # | 경계면 | 판정 | 확인 방법 |
+|---|---|---|---|
+| 16-1 | 문법 게이트 (전 26파일) | 통과 | 파스 에러 0 |
+| 16-2 | **Lv3 메커니즘 4종 행동** (§4.1-v2, AC-23~26 로직) | 통과 | QA 독립 테스트 `qa-verify-mechanisms.mjs` 28/28 — rapid_volley(스택별 cd = cooldown×factor^stacks, 상한, 자기킬 리셋, **발사 시점 대상 변경 리셋으로 타 원인 사망 가속 이월 없음** — tower.js:195-197 주석 명시 설계), overcharge(대기 200 > 연사 150, 상한 min(idle/chargeTime,1)), burning_ground(zone:created 6필드 문자 단위, 틱 -10 무이벤트, 틱 사망 enemy:killed, 만료 zone:expired+제거), frost_nova(반경 내 전원 슬로우+대상별 enemy:slowed+frost:nova, 반경 밖 제외, 직격 피해는 타겟만) |
+| 16-3 | Lv2 축 오버라이드 | 통과 | levels[i].splashRadius/slow 우선, 부재 시 projectile 기본 복귀 (E1~E3). 실데이터: cannon 90/104, frost {0.45,2.6} |
+| 16-4 | Zone shape §4.6 | 통과 | {id,kind,x,y,radius,remaining,alive} 전 필드 + 렌더 순서 타워→지대→적→투사체(combat.drawEntities) |
+| 16-5 | 데이터 v2 스키마 (§4.1-v2) | 통과 | 14/14 — assetKeys[3] §5.1 키 정확·매니페스트 존재, mechanism 타입 매핑 4종·union 필드·nameKo/desc(AC-28), 구속 nova.radius ≤ cannon Lv3 splash, v1 4필드 회귀 |
+| 16-6 | 이벤트 emit↔on 36종 | 통과 | 발행 36 유니크(계약 1:1), 신규 3종 구독 — zone:created(fx+audio), zone:expired(fx), frost:nova(fx+audio). fx 페이로드 읽기 계약 필드만, zone.alive 읽기는 §4.6 허용, 정리 3중 경로(particles.js:385) |
+| 16-7 | core v2 (§8·§10·§11) | 통과 | renderer: DPR=min(dpr,2) 백킹스토어·기저 변환·논리 960×640 불변 / input: Pointer 단일 경로(mouse/touch 리스너 0), 탭<8px, pointerType 부가, 터치 롱프레스 contextmenu 무시, 논리 좌표 §2 상수 유도 / assets: {img,atlas} 로드(probe 없음), getAnim 강등 체인 ①→②→③('_walk' 제거 정적 키 경유) |
+| 16-8 | enemy 애니메이션 (§10) | 통과 | 개체 누적 시간 t += dt×slowFactor(슬로우 시 걸음 감속), frame=floor(t×fps)%frames, 진행 각도 회전, HP바 비회전, getAnim 부재 시 로컬 강등(체인 ② 동형) |
+| 16-9 | ui v2 (§11, AC-28·33) | 통과 | placement: 터치 1탭 프리뷰 고정→동일 타일 2탭 확정→타 타일 이동, 마우스 v1 경로 불변, #btn-cancel-placement 노출 제어 / shop: 취소 버튼 배선+assetKeys[0] 아이콘 / panel: mechanism.nameKo/desc 표기 / css: touch-action none(게임 영역)·manipulation(버튼) |
+| 16-10 | tilemap v2 (§4.5-v2, AC-31) | 통과 | 순수 함수 직접 검증 — PATH 28타일 전부 방향 판별(h12·v10·코너6 == 웨이포인트 내부 꺾임 수), 무방향 폴백 0, 잔디 해시 결정적(Math.imul, 분포 91/44/15), decoTiles 키 렌더+DECO_KEYS 검증, 사용 키 전부 매니페스트 존재 |
+| 16-11 | V-1 해소 (폐지 키 참조) | 통과 | towers.js=assetKeys, shop=assetKeys[0], placement 갱신, tower.js:234의 def.assetKey는 v1 데이터 하위 호환 강등 분기(현 데이터에서 미도달) — 폐지 키 참조 실효 0 |
+| 16-12 | §12 상대 경로 재감사 (전 모듈 변경 후) | 통과 | 계약 grep 0건, touch-action/viewport 확인 |
+| 16-13 | 실데이터 통합 회귀 | 통과(체인)·수치는 D16-2 | 9/9 — 10웨이브 승리, 이벤트 체인·골드 무결·소프트락 없음. Lv3 메커니즘 인게임 활성 확인 |
+
+### 결함
+
+| # | 심각도 | 경계면 | 증상 | 재현/확인 | 담당 |
+|---|---|---|---|---|---|
+| D16-1 | P3 | 계약 §8 ↔ main.js | window.GAME에 v2 필수 필드 `zones` 누락 (계약 §8·변경 이력 ⑧ "window.GAME에 zones 추가" — engine-dev 배정). 게임플레이 무영향, AC-24 수치 판정·playtester 접근 경로 제한 | `grep zones src/main.js` 0건. combat.js는 zones export 완비 — main 훅 1줄 누락 | engine-dev |
+| D16-2 | P2 | 밸런스 게이트 (AC-37) | **wave-balancer 자체 게이트 sim.mjs가 exit 1로 실패 중인데 Task #14가 완료 마킹됨.** 실패 항목: "[실엔진] 킬존 클리어 + 잔여 라이프 6~14 (현재 16)" — v2 Lv3 메커니즘으로 난이도가 목표 밴드(잔여 30~70%) 아래로 하락(80%). QA 독립 시뮬 교차 확인: v1 보정 후 잔여 10 → v2 동일 전략 잔여 16 (W7 누수 5→0, W9 2→0 — Lv3 구간 완화). 메커니즘 코드는 계약 공식 그대로(16-2) — 순수 수치 영역 | `node scripts/sim.mjs; echo $?` → 1 / `qa-verify-integration.mjs` RESULT 비교 | wave-balancer |
+
+### 잔여 (v2 마감 전)
+
+- V-4: 42키 실파일+아틀라스 JSON 쌍 + reference/ + AC-30 스타일 대조 — asset-artist #10 진행 중
+- AC-33~35 실기/에뮬 확인, AC-27·29·31 육안 확인 — 브라우저 플레이테스트 소관
+- AC-36 배포 — 사용자 Pages 활성화 조치 대기 (§12 조건부)
+
+---
+
+## [검증 회차 17] v2 수정분 재검증 (entity 감사 2건·밸런스 최종·비네트 DPR·audio/ui 증분) — 2026-07-06
+
+완료 통지 배치 수신 후 최종 파일 상태 기준 재검증. **결함 0건 신규. D16-2 종결.**
+
+| # | 항목 | 판정 | 확인 방법 |
+|---|---|---|---|
+| 17-1 | entity 감사 수정 ① rapid_volley 발사 시점 리셋 | 통과 | 회차 16에서 이미 최종본 기준 검증 완료(16-2 — 검증 도중 착지분을 추적 반영). 재실행 28/28 유지 |
+| 17-2 | entity 감사 수정 ② frost_nova 헛방 게이트 | 통과 | combat.js:207 `hit.target` 조건 확인 — 헛방(target null·damage 0) 시 노바·슬로우 미발동. §3.9 "명중 시" 문언과 정합, burning_ground의 지점 기반과 의미 구분 유지. entity-dev-2 스크립트(30단언, 실데이터) 재실행 전체 통과로 단언 포함 확인 |
+| 17-3 | **D16-2 종결** (밸런스 게이트) | 통과 | 최초 재리포트 시점엔 실패 재현(잔여 16, exit 1)이었으나 13:24 waves.js 최종 조정 착지 후: `sim.mjs` 29/29·exit 0·3회 연속 잔여 11(결정적 — Math.random 0건). QA 독립 시뮬 교차: 승리, 잔여 11/20=55% — GDD 밴드(30~70%) 정중앙. 원인 규명(wave-balancer 확인): 최초 완료 측정(13/20)이 entity 13:13 최종 패치 이전 엔진 기준이었음 — 패치본 기준 16/20 이탈을 게이트가 정상 검출, W7~9 물량 강화(goblin 12→14/14→15, wasp 7→8/8→9 — 간격 불변)로 재보정. QA가 보고 수치와 파일 실값 전건 대조 일치 확인. 완료 보고는 최종 저장 후 게이트 재실행 기준 권고 전달 |
+| 17-4 | 비네트 DPR 수정 (flashes.js — engine-dev-2 발견, fx-dev 수정) | 통과 | flashes.js:202-216 — 그라데이션·fillRect가 논리 상수 960×640 기준(물리 px canvas.width 참조 제거, 주석으로 금지 명시). §11 논리 좌표계 원칙과 정합. 렌더 육안 확인(레티나 중앙 대칭)은 플레이테스트 항목 |
+| 17-5 | fx v2 증분 (tower:fired 리듬 추적) | 통과 | 신규 이벤트·페이로드 의존 없음(§3.9 확정 경로 — fx 내부 발사 간격 관측), Zone 필드는 alive만(§4.6), 정리 3중 경로. 계약 준수 |
+| 17-6 | audio 증분 (synth pointerup) | 통과 | synth.js:61-64 — pointerdown+pointerup(capture) 이중 unlock, iOS 사용자 활성화 시점 대응. 구독·발행 변화 없음 |
+| 17-7 | V-1 최종 재확정 | 통과 | src/ui 폐지 assetKey 참조 0건(ui-dev-2 수정 착지) — wave-balancer·engine-dev-2가 리포트한 shop.js:50/placement.js:188 건은 메시지 교차(수정 전 상태 기준)로 이미 해소됨 |
+| 17-8 | 메커니즘 회귀 (최종 수치) | 통과 | 실데이터: volley {maxStacks 4, factor 0.88}, overcharge {chargeTime 8, maxBonus 1}, arrow Lv2 10/0.50, W8~10 hpMult 3.45/4.06/4.80 — 스키마·구속 준수(sim 29항목 내 §12.1 구속 4건 포함 PASS) |
+
+### 미결 현황
+
+- D16-1 (P3, window.GAME.zones): engine-dev Phase 3 통합 지시에 포함(team-lead 확인) — 통합 완료 보고 시 검증
+- V-4: 42키 실파일+아틀라스 JSON — asset-artist #10 진행 중
+- 플레이테스트 이관: AC-23~26 육안·수치(±1스텝 허용 — 부동소수점 잔차, entity-dev-2 명시), AC-27/29/31 육안, AC-33~35 실기(합성 클릭은 PointerEvent로 주입 필요 — engine-dev 명시), AC-36(사용자 Pages 조치)
+
+---
+
+## [검증 회차 18] v2 Phase 3 통합 검증 (engine-dev 통합 완료) — 2026-07-06
+
+**D16-1 종결. 신규 결함 0건. 헤드리스 전 게이트 그린.**
+
+| # | 항목 | 판정 | 확인 방법 |
+|---|---|---|---|
+| 18-1 | **D16-1 종결** (window.GAME.zones) | 통과 | main.js:43 combat zones import + main.js:215 GAME.zones 노출 — §8 v2 계약 필드 완비. AC-24 수치 판정 경로 개통 |
+| 18-2 | renderer 표시 크기 소유권 이관 | 통과 | 인라인 style 설정 제거(주석으로 CSS 소유 명시), css/style.css:147 `#game-canvas` 규칙 존재 — §11 세로 레이아웃과 단일 소유. AC-35 판정 시 인라인이 아닌 CSS 크기 기준임을 플레이테스트 항목에 반영 |
+| 18-3 | engine-dev 헤드리스 스모크 v2 | 통과 | `headless_smoke_v2.mjs` 재실행 25/25·console.error 0 — 4종 발사·장판 생성/만료 전량·매각 환불·frost:nova 실발동·GAME.zones 포함 |
+| 18-4 | QA 전체 회귀 | 통과 | 문법 게이트, 메커니즘 28/28, 통합 시뮬 9/9(승리·잔여 11), sim.mjs exit 0, §12 경로 감사 0건, :8123 정적 200 |
+| 18-5 | 브라우저 게이트 (AC-20 콘솔·AC-33/34 모바일·AC-35 DPR) | **미검증 (환경 사유)** | Chrome 확장 미연결(누적 3회 시도) — playtester 이관. 참고: 합성 클릭은 PointerEvent 주입 필요, nova 육안 확인은 프로스트 단독 국면 권장(혼성 배치에서 volley가 타겟 선점 — engine-dev 실측), 에셋 착지 후 걷기 아틀라스 frames 4·fps 8 실로딩 재확인 |
+
+### v2 미결 현황
+
+- **V-4만 잔존**: 42키 실파일+아틀라스 JSON 쌍+reference/(AC-30) — asset-artist #10 진행 중. 착지 시 회차 19로 검증 후 v2 QA 게이트 종결 가능 (브라우저·배포 항목은 각각 playtester·사용자 조치 소관)
+
+---
+
+## [검증 회차 19] v2 에셋 검증 (asset-artist #10 완료) — V-4 종결 — 2026-07-06
+
+**결함 0건. v2 QA 보류 전 항목 종결.**
+
+| # | 항목 | 판정 | 확인 방법 |
+|---|---|---|---|
+| 19-1 | 42키 전수 실파일 (walk 쌍 포함 47파일) | 통과 | 독립 스크립트 — 매니페스트 전 경로 존재·50B 초과, 누락 0 |
+| 19-2 | 아틀라스 JSON 5종 §10 형식 | 통과 | frameW/H 128·frames 4·fps 8·sequences.walk [0,1,2,3] — 5종 전부 계약과 1:1 파싱 대조 |
+| 19-3 | 치수·포맷 | 통과 | 걷기 스트립 5종 512×128(1행 4열), 타워 12키 128×128, PNG 시그니처 전수, walk 5종 RGBA(투명) |
+| 19-4 | reference/ (AC-30 전반) | 통과 | 원본 12장 보존, 매니페스트 미등재(런타임 미사용), 파일명 snake_case |
+| 19-5 | AC-30 스타일 대조 (QA 시각 판정) | 통과 | tower_arrow lv1↔lv3: 동일 목재 석궁 망루 실루엣 + 증축·장식 강화(레벨 오인 없음 — §5.1 반려 기준 미해당) / goblin walk 4프레임: v1 팔레트(녹색 피부·누더기·단검) 유지·프레임별 걷기 자세 뚜렷 / tile_path_ne: 북·동 개구 = 키 명명 일치, 잔디 모서리 톤은 tile_grass(v1 무변경 — git diff 0)와 동일 계열로 이음새 위험 없음 |
+
+### v2 QA 최종 집계
+
+| 구분 | 결과 |
+|---|---|
+| 검증 회차 | 14~19 (6회) |
+| 결함 | D16-1(P3)·D16-2(P2) — **전건 종결**, 미결 0 |
+| 보류 V-1~V-7 | **전건 해소** (V-7 중 헤드리스 게이트 완료 — AC-23~26 로직·28·30·31·32·37 판정 근거 확보) |
+| 헤드리스 게이트 | 문법·이벤트 36종·스키마·메커니즘 28케이스·D11 불변·상대 경로·snake_case·sim 29항목·통합 시뮬 — 전부 그린 |
+| 이관 | AC-20/27(육안)/29(육안)/31(육안)/33/34/35 → playtester (기술 참고 4건 등재) / AC-36 → 사용자 Pages 조치 후 조건부 |

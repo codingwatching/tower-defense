@@ -12,6 +12,10 @@
  *   enemy:slowed {enemy, factor, duration}
  *   tower:placed {tower, cost} / tower:upgraded {tower, cost}
  *   tower:fired {towerType, x, y, target} / game:started {} (전체 클리어)
+ *   (v2 §3.9) zone:created {zone, x, y, radius, duration, kind} — 화염 지대 점화+지속 불꽃.
+ *             바닥 원은 entities/zone.draw 소관(레이어 20), 여기는 그 위 불꽃만.
+ *             틱 피해 이벤트는 없다 — 장판 자체가 지속 연출을 담당 (디렉터 확정: 숫자 스팸 방지)
+ *   (v2 §3.9) zone:expired {zone} — 이미터 정리 / frost:nova {x, y, radius} — 파동 링+서리 파편
  */
 
 import { on } from '../core/events.js';
@@ -19,8 +23,11 @@ import { on } from '../core/events.js';
 // ─────────────────────────────────────────────────────────────
 // 연출 강도 상수 — 튜닝은 전부 여기서 (playtester 피드백 대응 지점)
 // ─────────────────────────────────────────────────────────────
-const POOL_SIZE = 256;          // 동시 파티클 상한. 초과 시 가장 오래된 것 재활용
-const TRACER_POOL_SIZE = 24;    // 동시 투사체 트레이서 상한
+// (v2 §11) 모바일 프리셋 — coarse 포인터(터치)면 밀도·상한 하향. node 환경 가드 필수.
+const IS_COARSE = typeof matchMedia === 'function' && matchMedia('(pointer:coarse)').matches;
+const DENSITY = IS_COARSE ? 0.6 : 1;                // 모든 버스트 개수에 곱하는 밀도 배율
+const POOL_SIZE = IS_COARSE ? 160 : 256;            // 동시 파티클 상한. 초과 시 가장 오래된 것 재활용
+const TRACER_POOL_SIZE = IS_COARSE ? 16 : 24;       // 동시 투사체 트레이서 상한
 
 const EXPLOSION = { sparks: 14, smokes: 5, speedMin: 120, speedMax: 300, life: 0.4, ringLife: 0.32 };
 const HIT_SPARK = { count: 5, speedMin: 70, speedMax: 180, life: 0.22 };
@@ -34,6 +41,21 @@ const TRAIL = {
   speed: { cannon: 340, arcane: 460 }, // 가상 트레이서 px/s (실 투사체 속도 근사)
   emitInterval: 0.03,                  // 트레일 입자 방출 간격(초)
   maxFlight: 1.6,                      // 트레이서 최대 비행 시간(초) — 안전 소멸
+};
+// (v2) 화염 지대 — 점화 버스트 + duration 동안 불꽃/불티 지속 방출
+const ZONE_FX = {
+  maxZones: IS_COARSE ? 3 : 6,               // 동시 장판 이미터 상한. 초과 시 최오래된 것 재활용
+  emitInterval: IS_COARSE ? 0.10 : 0.055,    // 장판 1개당 불꽃 방출 간격(초)
+  ttlMargin: 0.25,                           // zone:expired 유실 대비 자체 수명 여유(초)
+  flame: { life: 0.55, riseMin: 26, riseMax: 66, sizeMin: 2.5, sizeMax: 5.5 },
+  emberChance: 0.3,                          // 불꽃 대신 밝은 불티가 나올 확률
+  ignite: { sparks: 10, speedMin: 60, speedMax: 170, life: 0.35, ringLife: 0.3 },
+};
+// (v2) 빙결 파동 — 링은 정확히 nova radius까지 확장 (AC-25 반경 암시)
+const NOVA = {
+  rings: [{ life: 0.38, from: 0.15 }, { life: 0.55, from: 0.02 }], // from = 시작 반경 비율
+  shards: 14, shardSpeedMin: 90, shardSpeedMax: 220, shardLife: 0.4,
+  sparkles: 8, sparkleLifeMin: 0.3, sparkleLifeMax: 0.55,          // 반경 내 지면 서리 반짝임
 };
 
 // 사망 팝 색 (적 타입별, [r,g,b])
@@ -78,6 +100,14 @@ const tracers = [];
 for (let i = 0; i < TRACER_POOL_SIZE; i++) tracers.push(makeTracer());
 let tracerHead = 0;
 
+// (v2) 장판 이미터 — zone 1개당 슬롯 1개. zone 참조는 정리 판정에만 사용 (상태 조회 API 아님)
+function makeZoneEmitter() {
+  return { active: false, zone: null, x: 0, y: 0, radius: 0, emit: 0, ttl: 0 };
+}
+const zoneEmitters = [];
+for (let i = 0; i < ZONE_FX.maxZones; i++) zoneEmitters.push(makeZoneEmitter());
+let zoneHead = 0;
+
 const rand = (min, max) => min + Math.random() * (max - min);
 const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
 
@@ -85,7 +115,8 @@ const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
 // 이미터
 // ─────────────────────────────────────────────────────────────
 function burst(x, y, count, cfg, init) {
-  for (let i = 0; i < count; i++) {
+  const n = Math.max(1, Math.round(count * DENSITY));
+  for (let i = 0; i < n; i++) {
     const p = spawn();
     const ang = Math.random() * Math.PI * 2;
     const spd = rand(cfg.speedMin, cfg.speedMax);
@@ -180,6 +211,81 @@ function escapePuff(x, y) {
   });
 }
 
+// ─── (v2) 화염 지대 — 점화 버스트 + 장판 위 불꽃 지속 방출 ───
+function igniteBurst(x, y, radius) {
+  burst(x, y, ZONE_FX.ignite.sparks, ZONE_FX.ignite, (p) => {
+    p.shape = 'spark'; p.drag = 3; p.size0 = rand(1.5, 3);
+    p.color = Math.random() < 0.5 ? 'rgb(255,180,70)' : 'rgb(255,120,40)';
+  });
+  // 장판 범위 암시 링 — 스플래시 링(explosion)과 별개로 zone radius까지만 확장
+  const ring = spawn();
+  ring.shape = 'ring'; ring.x = x; ring.y = y;
+  ring.life = ring.maxLife = ZONE_FX.ignite.ringLife;
+  ring.size0 = radius * 0.3; ring.size1 = radius;
+  ring.alpha = 0.7; ring.color = 'rgb(255,150,60)';
+}
+
+function emitFlame(s) {
+  // 반경 내 균일 분포 지점에서 위로 떠오르는 불꽃/불티
+  const ang = Math.random() * Math.PI * 2;
+  const r = s.radius * Math.sqrt(Math.random()) * 0.9;
+  const p = spawn();
+  p.x = s.x + Math.cos(ang) * r;
+  p.y = s.y + Math.sin(ang) * r;
+  p.vx = rand(-12, 12);
+  if (Math.random() < ZONE_FX.emberChance) { // 불티 — 작고 밝게, 높이
+    p.life = p.maxLife = ZONE_FX.flame.life * 1.3;
+    p.vy = -rand(ZONE_FX.flame.riseMax * 0.9, ZONE_FX.flame.riseMax * 1.5);
+    p.size0 = rand(1.2, 2.2); p.size1 = 0.3;
+    p.color = 'rgb(255,235,150)';
+  } else {                                   // 불꽃 혀 — 떠오르며 수축
+    p.life = p.maxLife = ZONE_FX.flame.life * rand(0.7, 1.15);
+    p.vy = -rand(ZONE_FX.flame.riseMin, ZONE_FX.flame.riseMax);
+    p.size0 = rand(ZONE_FX.flame.sizeMin, ZONE_FX.flame.sizeMax); p.size1 = 0.5;
+    p.color = Math.random() < 0.5 ? 'rgb(255,150,50)' : 'rgb(255,100,35)';
+  }
+}
+
+function startZoneEmitter(zone, x, y, radius, duration) {
+  const s = zoneEmitters[zoneHead];
+  zoneHead = (zoneHead + 1) % ZONE_FX.maxZones; // 고갈 시 최오래된 슬롯 조용히 재활용
+  s.active = true; s.zone = zone || null;
+  s.x = x; s.y = y; s.radius = radius; s.emit = 0;
+  s.ttl = (Number.isFinite(duration) ? duration : 3) + ZONE_FX.ttlMargin;
+}
+
+function stopZoneEmitter(zone) {
+  for (const s of zoneEmitters) {
+    if (s.active && s.zone === zone) { s.active = false; s.zone = null; return; }
+  }
+}
+
+// ─── (v2) 빙결 파동 — nova radius까지 확산하는 이중 링 + 서리 파편 + 지면 반짝임 ───
+function frostNova(x, y, radius) {
+  for (const rc of NOVA.rings) {
+    const ring = spawn();
+    ring.shape = 'ring'; ring.x = x; ring.y = y;
+    ring.life = ring.maxLife = rc.life;
+    ring.size0 = radius * rc.from; ring.size1 = radius;
+    ring.alpha = 0.9; ring.color = 'rgb(170,225,255)';
+  }
+  burst(x, y, NOVA.shards, { speedMin: NOVA.shardSpeedMin, speedMax: NOVA.shardSpeedMax, life: NOVA.shardLife }, (p) => {
+    p.shape = 'shard'; p.drag = 2.5; p.gravity = 150;
+    p.size0 = rand(2, 4);
+    p.color = Math.random() < 0.5 ? 'rgb(200,240,255)' : 'rgb(130,200,250)';
+  });
+  const n = Math.max(1, Math.round(NOVA.sparkles * DENSITY));
+  for (let i = 0; i < n; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const r = radius * Math.sqrt(Math.random());
+    const p = spawn();
+    p.shape = 'star'; p.x = x + Math.cos(ang) * r; p.y = y + Math.sin(ang) * r;
+    p.life = p.maxLife = rand(NOVA.sparkleLifeMin, NOVA.sparkleLifeMax);
+    p.vy = -rand(5, 20); p.size0 = rand(2, 4); p.size1 = 0.5;
+    p.color = 'rgb(220,245,255)';
+  }
+}
+
 // ─── 투사체 트레일 (가상 트레이서 — 실 투사체 상태를 읽지 않는 이벤트 전용 근사) ───
 function spawnTracer(x, y, target, type) {
   const t = tracers[tracerHead];
@@ -224,6 +330,7 @@ function guard(fn) {
 function clearAll() {
   for (const p of pool) p.active = false;
   for (const t of tracers) { t.active = false; t.target = null; }
+  for (const s of zoneEmitters) { s.active = false; s.zone = null; }
 }
 
 /** 구독 등록. main이 1회 호출. */
@@ -255,11 +362,33 @@ export function initParticles() {
   on('tower:upgraded', guard(({ tower }) => {
     if (tower && Number.isFinite(tower.x)) upgradeSparkle(tower.x, tower.y);
   }));
+  on('zone:created', guard(({ zone, x, y, radius, duration }) => {
+    if (!Number.isFinite(x) || !(radius > 0)) return;
+    igniteBurst(x, y, radius);
+    startZoneEmitter(zone, x, y, radius, duration);
+  }));
+  on('zone:expired', guard(({ zone }) => {
+    if (zone) stopZoneEmitter(zone);
+  }));
+  on('frost:nova', guard(({ x, y, radius }) => {
+    if (!Number.isFinite(x) || !(radius > 0)) return;
+    frostNova(x, y, radius);
+  }));
   on('game:started', guard(clearAll));
 }
 
 /** @param {number} dt - 고정 스텝 (초). main update에서 호출 (배속 반영) */
 export function updateParticles(dt) {
+  for (const s of zoneEmitters) {
+    if (!s.active) continue;
+    s.ttl -= dt;
+    // 정리 경로 3중: zone:expired 이벤트 > zone.alive=false > 자체 ttl 소진
+    if ((s.zone && s.zone.alive === false) || s.ttl <= 0) {
+      s.active = false; s.zone = null; continue;
+    }
+    s.emit -= dt;
+    while (s.emit <= 0) { s.emit += ZONE_FX.emitInterval; emitFlame(s); }
+  }
   for (const t of tracers) {
     if (!t.active) continue;
     t.age += dt;

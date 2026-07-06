@@ -1,13 +1,21 @@
 /**
  * @module ui/placement (ui-dev)
  * 배치 모드 + 필드 내 캔버스 오버레이 (렌더 레이어 40 — §8):
- * 마우스 추적 고스트 + 사거리 원 + 타일 하이라이트(가능=초록, 불가=빨강 — AC-08),
+ * 고스트 타워 + 사거리 원 + 타일 하이라이트(가능=초록, 불가=빨강 — AC-08),
  * 건설된 타워 클릭 선택 / 선택 타워 사거리 원.
  * 건설 가능 판정은 map/grid.isBuildable만 소비한다 — 자체 판정 로직 금지.
  * 레이어 40 등록은 main이 drawOverlay를 import해 수행한다 (§8 부트스트랩 4).
  *
- * 구독: input:move {x, y, col, row} — 고스트 위치 갱신
- *      input:click {x, y, col, row, button} — 배치 확정 또는 타워 선택/해제
+ * v2 배치 상태 머신 (계약 §11, AC-33):
+ *   'mouse'        — v1 그대로: hover 추적 프리뷰 + 클릭 즉시 확정 (데스크톱 회귀 금지, AC-37)
+ *   'touch'|'pen'  — 1탭 = 해당 타일 프리뷰 고정(고스트+사거리+가부 색),
+ *                    다른 타일 탭 = 프리뷰 이동, 동일 타일 2탭째 = 확정(ui:build-requested)
+ *   취소           — ESC/우클릭(input:cancel) + #btn-cancel-placement(§7).
+ *                    버튼 표시/숨김은 이 모듈, 클릭 배선은 shop.js(상점 하이라이트 해제 동반
+ *                    — 같은 ui 디렉토리 내 결합 허용, §1 예외)
+ *
+ * 구독: input:move {x, y, col, row, pointerType} — 마우스 고스트 위치 갱신
+ *      input:click {x, y, col, row, button, pointerType} — 확정/프리뷰 고정/타워 선택
  *      input:cancel {} — 배치 모드 취소, 선택 해제 (우클릭/ESC — AC-08)
  *      build:rejected {reason} — 배치 모드 유지 + 빨강 펄스 피드백
  *      tower:placed {} — 배치 모드 종료
@@ -27,10 +35,12 @@ import { TOWERS } from '../data/towers.js';
 const REJECT_FLASH_MS = 350;
 
 let placing = null;      // 배치 모드의 타워 타입 (null = 비활성)
-let hover = null;        // 마지막 input:move 페이로드
+let hover = null;        // 마지막 input:move 페이로드 (pointerType 포함)
+let touchPreview = null; // 터치/펜 1탭으로 고정된 프리뷰 셀 {col, row} (null = 미고정)
 let selected = null;     // 선택된 설치 타워 (사거리 원 표시용)
 let rejectUntil = 0;     // 이 시각(performance.now ms)까지 빨강 펄스
 let stageEl = null;
+let btnCancelEl = null;  // #btn-cancel-placement — 배치 모드 중에만 노출 (§7, §11)
 
 function num(v, fallback) {
   return Number.isFinite(v) ? v : fallback;
@@ -56,9 +66,19 @@ function clearSelection() {
   emit('tower:deselected', {});
 }
 
+/** 탭 상태 머신을 타는 포인터인가 (§11 — 'touch'|'pen'). 미지정은 마우스로 간주. */
+function isTapPointer(pointerType) {
+  return pointerType === 'touch' || pointerType === 'pen';
+}
+
+function setCancelButtonVisible(visible) {
+  btnCancelEl?.classList.toggle('hidden', !visible);
+}
+
 /** 구독 등록. main이 1회 호출. (레이어 40 등록은 main 소관) */
 export function initPlacement() {
   stageEl = document.getElementById('stage');
+  btnCancelEl = document.getElementById('btn-cancel-placement');
 
   on('input:move', (p = {}) => {
     if (Number.isFinite(p.col) && Number.isFinite(p.row)) hover = p;
@@ -69,6 +89,13 @@ export function initPlacement() {
     const cell = { col: p.col, row: p.row };
 
     if (placing) {
+      if (isTapPointer(p.pointerType) &&
+          (!touchPreview || touchPreview.col !== cell.col || touchPreview.row !== cell.row)) {
+        // 1탭 = 프리뷰 고정 / 다른 타일 탭 = 프리뷰 이동 — 확정은 동일 타일 2탭째 (AC-33)
+        touchPreview = cell;
+        return;
+      }
+      if (!isTapPointer(p.pointerType)) touchPreview = null; // 마우스 확정은 클릭 타일 기준 (v1)
       if (isBuildable(cell)) {
         emit('ui:build-requested', { towerType: placing, col: cell.col, row: cell.row });
       } else {
@@ -110,8 +137,10 @@ export function initPlacement() {
     placing = null;
     selected = null;
     hover = null;
+    touchPreview = null;
     rejectUntil = 0;
     stageEl?.classList.remove('placing');
+    setCancelButtonVisible(false);
   });
 }
 
@@ -122,17 +151,23 @@ export function initPlacement() {
 export function enterPlacementMode(towerType) {
   clearSelection();
   placing = towerType;
+  touchPreview = null;
   stageEl?.classList.add('placing');
+  setCancelButtonVisible(true);
 }
 
-/** 배치 모드 취소 (shop 토글/취소 입력에서 호출 — ui 내부 결합 허용). */
+/** 배치 모드 취소 (shop 토글/취소 버튼/취소 입력에서 호출 — ui 내부 결합 허용). */
 export function cancelPlacementMode() {
   placing = null;
+  touchPreview = null;
   stageEl?.classList.remove('placing');
+  setCancelButtonVisible(false);
 }
 
 /**
  * 레이어 40 drawFn — 고스트·사거리 원·하이라이트. 상태 변경 금지.
+ * 프리뷰 셀: 터치 고정 셀 우선, 없으면 마우스 hover (터치/펜 hover는 프리뷰를 움직이지
+ * 않는다 — §11 "1탭 프리뷰 고정" 시맨틱).
  * @param {CanvasRenderingContext2D} ctx
  */
 export function drawOverlay(ctx) {
@@ -143,9 +178,10 @@ export function drawOverlay(ctx) {
     );
   }
 
-  if (!placing || !hover) return;
-  const cell = { col: hover.col, row: hover.row };
-  if (!inBounds(cell)) return;
+  if (!placing) return;
+  const cell = touchPreview ??
+    (hover && !isTapPointer(hover.pointerType) ? { col: hover.col, row: hover.row } : null);
+  if (!cell || !inBounds(cell)) return;
 
   const good = !!isBuildable(cell) && performance.now() >= rejectUntil;
   const { x, y } = cellCenter(cell);
@@ -185,7 +221,8 @@ function drawGhost(ctx, type, x, y) {
   ctx.save();
   ctx.globalAlpha = 0.65;
   try {
-    const img = getAsset(TOWERS[type]?.assetKey ?? `tower_${type}`);
+    // 고스트는 건설 결과물 = Lv1 스프라이트 (§4.1-v2 assetKeys — v1 assetKey 폐지)
+    const img = getAsset(TOWERS[type]?.assetKeys?.[0] ?? `tower_${type}_lv1`);
     if (img) {
       ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
       ctx.restore();

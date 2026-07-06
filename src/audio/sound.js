@@ -83,6 +83,23 @@ const SFX = {
     { type: 'sine', freq: 987.77, duration: 0.1, volume: 0.12, delay: 0.22 },
   ],
 
+  // v2 Lv3 메커니즘 (계약 §3.9)
+  zone_ignite: () => [
+    // 착화 웁 — 저역에서 열리는 노이즈 스윕
+    { noise: true, filter: { type: 'lowpass', freq: 400, freqEnd: 2200 }, duration: 0.12, volume: 0.3 },
+    // 지글 — 대역 노이즈가 아래로 잦아드는 크래클
+    { noise: true, filter: { type: 'bandpass', freq: jitter(2800), freqEnd: 1300, q: 2 }, duration: 0.34, volume: 0.15, delay: 0.06 },
+    // 저역 화염 바닥
+    { type: 'sawtooth', freq: jitter(70), freqEnd: 45, duration: 0.3, volume: 0.12, delay: 0.04 },
+  ],
+  nova_shing: () => [
+    // 파동 확산 — 위로 뻗는 슁 (fire_frost보다 낮게 시작해 더 멀리 스윕 = 더 큰 사건)
+    { type: 'triangle', freq: jitter(600), freqEnd: 2600, duration: 0.22, volume: 0.2 },
+    { type: 'sine', freq: jitter(1200), freqEnd: 3800, duration: 0.3, volume: 0.12, delay: 0.03 },
+    // 얼음 반짝 잔향
+    { noise: true, filter: { type: 'highpass', freq: 5000 }, duration: 0.24, volume: 0.08, delay: 0.08 },
+  ],
+
   // UI
   click: () => [
     { type: 'square', freq: 2000, duration: 0.025, volume: 0.09 },
@@ -187,6 +204,11 @@ export function initSound() {
   sub('enemy:killed', () => { playSfx('die'); playSfx('coin'); });
   sub('enemy:escaped', () => playSfx('escape'));
   sub('lives:changed', (p) => { if ((p.delta || 0) < 0) playSfx('alarm'); });
+
+  // v2 Lv3 메커니즘 (계약 §3.9) — 캐논 착탄과 겹치는 zone:created는 지글이 폭발 아래 깔리는 음량.
+  // zone:expired는 의도적 무음: 소멸은 fx 페이드가 전달하고, 주기적 만료음은 청취 피로만 더한다.
+  sub('zone:created', () => playSfx('zone_ignite'));
+  sub('frost:nova', () => playSfx('nova_shing'));
 
   // 타워 생애주기
   sub('tower:placed', () => playSfx('build'));

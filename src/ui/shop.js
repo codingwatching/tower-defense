@@ -1,9 +1,12 @@
 /**
  * @module ui/shop (ui-dev)
  * 하단 타워 상점 바 (DOM — #shop, .shop-item[data-tower], ID 계약 §7).
- * 아이콘은 tower_* 에셋 재사용, 가격은 TOWERS[type].levels[0].cost.
+ * 아이콘은 tower_{type}_lv1 에셋(assetKeys[0] — §4.1-v2, v1 assetKey 폐지) 재사용,
+ * 가격은 TOWERS[type].levels[0].cost.
  * 골드 부족 시 disabled 속성 (AC-07). 비활성은 CSS pointer-events:none이므로
  * 클릭이 #shop 컨테이너로 통과 → 좌표로 버튼을 찾아 ui:error 발행 + 흔들림.
+ * #btn-cancel-placement 클릭 = 배치 취소 + 하이라이트 해제 (§11 취소 수단 —
+ * 표시/숨김은 placement.js 소관, 같은 ui 디렉토리 내 결합 허용).
  *
  * 구독: gold:changed {gold} — 버튼 활성/비활성 갱신
  *      game:started {} — 선택 해제 + 활성 갱신
@@ -47,7 +50,8 @@ function costOf(type) {
 function drawIcon(canvas, type, def) {
   const ctx = canvas.getContext('2d');
   try {
-    const img = getAsset(def?.assetKey ?? `tower_${type}`);
+    // 상점 아이콘 = 건설 결과물인 Lv1 스프라이트 (§5 — UI 전용 이미지 없음)
+    const img = getAsset(def?.assetKeys?.[0] ?? `tower_${type}_lv1`);
     if (img) {
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       return;
@@ -150,6 +154,12 @@ export function initShop() {
   refresh(num(getGold(), 0));
 
   shopEl.addEventListener('click', onShopClick);
+
+  // 배치 취소 버튼 (§11) — 취소 로직은 상점의 "같은 카드 재탭" 분기와 동일 경로
+  document.getElementById('btn-cancel-placement')?.addEventListener('click', () => {
+    cancelPlacementMode();
+    deselect();
+  });
 
   on('gold:changed', ({ gold } = {}) => refresh(gold));
   on('game:started', () => {

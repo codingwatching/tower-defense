@@ -5,7 +5,10 @@
  * 사용: node scripts/sim.mjs
  * DOM API(document, canvas, Image) 사용 금지 — data + 순수 로직 모듈만 import.
  *
- * 구성 (v2 — QA D9-1 보정 반영):
+ * 구성 (v3 — GDD §12.1 메커니즘 검증 추가. v2 = QA D9-1 보정):
+ *  Part 2 봇은 실엔진을 그대로 구동하므로 Lv3 메커니즘(rapid_volley/burning_ground/
+ *  frost_nova/overcharge)이 자동 반영된다 — 봇 큐엔 frost Lv3 도달 액션만 보강.
+ *  Part 3에 §4.1-v2 스키마·§12.1 밸런스 구속 4건을 게이트로 인코딩.
  *  Part 1. 이론 상한 모델 (td-balance-design §3 DPS 예산 부등식) — 참고용.
  *          전 경로 노출 × 배치 계수를 가정하므로 실엔진 대비 약 2배 낙관임이
  *          실측(QA 회차 9)으로 확인됨. 난이도 판정에 사용하지 않는다.
@@ -50,7 +53,7 @@ if (!pathLen) {
 }
 
 console.log('════════════════════════════════════════════════════════════');
-console.log(' 크리스탈 가드 — 헤드리스 밸런스 시뮬레이션 v2 (D9-1 보정)');
+console.log(' 크리스탈 가드 — 헤드리스 밸런스 시뮬레이션 v3 (§12.1 메커니즘 반영)');
 console.log('════════════════════════════════════════════════════════════');
 console.log(`경로 길이: ${pathLen}px — ${pathSource}`);
 
@@ -168,7 +171,8 @@ const STRATEGIES = [
       ['up', 9, 4],
       ['build', 'cannon', 11, 4],
       ['build', 'arrow', 5, 3], ['build', 'arrow', 11, 3],
-      ['up', 7, 6], ['up', 11, 4], ['up', 5, 3], ['up', 11, 3], ['up', 6, 4], ['up', 10, 4]
+      ['up', 7, 6], ['up', 11, 4], ['up', 5, 3], ['up', 11, 3], ['up', 6, 4], ['up', 10, 4],
+      ['up', 6, 4] // (v2) frost Lv3 — 빙결 파동 활성으로 4개 메커니즘 전부 노출 (AC-37)
     ]
   }
 ];
@@ -292,6 +296,49 @@ ok('보스 slowResist 0.5·livesCost 5·isBoss (GDD 고정)',
 ok('시작 골드로 타워 2기 건설 가능 (GDD §6)',
   BALANCE.startGold >= 2 * TOWERS.arrow.levels[0].cost &&
   BALANCE.startGold >= TOWERS.arrow.levels[0].cost + TOWERS.frost.levels[0].cost);
+
+// v2 스키마 (§4.1-v2) + GDD §12.1 메커니즘 구속
+ok('assetKeys = tower_{id}_lv1~3 3키, v1 assetKey 폐지 (AC-27)', Object.values(TOWERS).every(t =>
+  !('assetKey' in t) && Array.isArray(t.assetKeys) && t.assetKeys.length === 3 &&
+  t.assetKeys.every((k, i) => k === `tower_${t.id}_lv${i + 1}`)));
+try {
+  const { MANIFEST } = await import('../assets/manifest.js');
+  ok('assetKeys 12키 전부 매니페스트 등재', Object.values(TOWERS).every(t => t.assetKeys.every(k => k in MANIFEST)));
+} catch {
+  ok('assetKeys 매니페스트 대조 — manifest.js 로드 실패', false);
+}
+ok('mechanism 4종 타입 대응 + nameKo/desc (AC-28)', (
+  TOWERS.arrow.mechanism?.type === 'rapid_volley' &&
+  TOWERS.cannon.mechanism?.type === 'burning_ground' &&
+  TOWERS.frost.mechanism?.type === 'frost_nova' &&
+  TOWERS.arcane.mechanism?.type === 'overcharge' &&
+  Object.values(TOWERS).every(t => t.mechanism.nameKo && t.mechanism.desc)));
+{
+  const mArrow = TOWERS.arrow.mechanism;
+  const mCannon = TOWERS.cannon.mechanism;
+  const mFrost = TOWERS.frost.mechanism;
+  const mArcane = TOWERS.arcane.mechanism;
+  const arrowL3 = TOWERS.arrow.levels[2];
+  const cannonL3 = TOWERS.cannon.levels[2];
+  const arcaneL3 = TOWERS.arcane.levels[2];
+  const arrowMaxDps = arrowL3.damage / (arrowL3.cooldown * Math.pow(mArrow.stackFactor, mArrow.maxStacks));
+  const arcaneSustain = (arcaneL3.damage * (1 + Math.min(arcaneL3.cooldown / mArcane.chargeTime, 1) * mArcane.maxBonus)) / arcaneL3.cooldown;
+  ok(`속사 최대 DPS(${arrowMaxDps.toFixed(1)}) < 아케인 상시 DPS(${arcaneSustain.toFixed(1)}) — §12.1 저격 침범 금지`,
+    arrowMaxDps < arcaneSustain);
+  ok('화염 지대 틱 DPS < 캐논 Lv3 직격 DPS — §12.1 주 딜은 착탄',
+    mCannon.tickDamage / mCannon.tickInterval < cannonL3.damage / cannonL3.cooldown);
+  ok('빙결 파동 반경 ≤ 캐논 Lv3 스플래시 — §12.1',
+    mFrost.radius <= (cannonL3.splashRadius ?? TOWERS.cannon.projectile.splashRadius));
+  ok('과충전 상시 보정 ≤ +35% — §12.1 상시 DPS 왜곡 금지',
+    Math.min(arcaneL3.cooldown / mArcane.chargeTime, 1) * mArcane.maxBonus <= 0.35);
+  ok('Lv2 비대칭 축 — arrow 공속·cannon 스플래시·frost 슬로우·arcane 사거리 (§12.1)', (
+    TOWERS.arrow.levels[1].cooldown < TOWERS.arrow.levels[0].cooldown &&
+    (TOWERS.cannon.levels[1].splashRadius ?? 0) > TOWERS.cannon.projectile.splashRadius &&
+    TOWERS.frost.levels[1].slow && TOWERS.frost.levels[1].slow.factor < TOWERS.frost.projectile.slow.factor &&
+    TOWERS.frost.levels[1].slow.duration > TOWERS.frost.projectile.slow.duration &&
+    (TOWERS.arcane.levels[1].range - TOWERS.arcane.levels[0].range) >
+      Math.max(...['arrow', 'cannon', 'frost'].map(k => TOWERS[k].levels[1].range - TOWERS[k].levels[0].range))));
+}
 
 // 등장 순서 (AC-14)
 const waveTypes = WAVES.map(w => new Set(w.groups.map(g => g.enemy)));

@@ -1,6 +1,9 @@
 /*
  * css/style.css — ui-dev 소유 (레이아웃 시드: system-architect).
- * 구조 계약(§7): #app 폭 960, HUD 바(48px) + 960×640 캔버스(#stage) + 상점 바(96px) 세로 스택.
+ * 구조 계약(§7): #app 폭 960, HUD 바 + 960×640 캔버스(#stage) + 상점 바 세로 스택.
+ * v2 모바일 계약(§11, AC-33~35): 뷰포트 < 960px에서 CSS만으로 캔버스 종횡비 축소
+ * (논리 좌표계 960×640 불변 — 입력 역보정은 core/input), HUD 상단/상점 하단 스택 유지,
+ * 가로 스크롤 금지, 터치 타깃 ≥ 44px, 게임 영역 touch-action:none/버튼 manipulation.
  * 톤: 어두운 슬레이트 크롬 + 수정(시안/보라) 포인트 — 밝은 카툰 판타지 필드와 대비.
  */
 :root {
@@ -31,7 +34,7 @@ body {
 }
 
 #app {
-  width: 960px;
+  width: min(960px, 100%); /* 데스크톱 960 고정과 동일, 좁은 화면은 축소 — 가로 스크롤 금지 */
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
@@ -44,6 +47,7 @@ body {
 
 #hud button,
 #tower-panel button,
+#btn-cancel-placement,
 .screen button {
   font-family: inherit;
   font-size: 13px;
@@ -54,14 +58,19 @@ body {
   border-radius: 8px;
   padding: 7px 14px;
   cursor: pointer;
+  touch-action: manipulation; /* 더블탭 줌 차단 (§11) */
   transition: background 0.12s, border-color 0.12s, opacity 0.12s, transform 0.05s;
 }
 
-#hud button:hover:not(:disabled),
-#tower-panel button:hover:not(:disabled),
-.screen button:hover {
-  border-color: var(--accent);
-  filter: brightness(1.12);
+/* hover 연출은 hover가 실재하는 장치에만 — 터치의 sticky hover 방지 */
+@media (hover: hover) {
+  #hud button:hover:not(:disabled),
+  #tower-panel button:hover:not(:disabled),
+  #btn-cancel-placement:hover,
+  .screen button:hover {
+    border-color: var(--accent);
+    filter: brightness(1.12);
+  }
 }
 
 #hud button:active:not(:disabled),
@@ -126,18 +135,43 @@ body {
 #btn-speed.active,
 #btn-mute.active { border-color: var(--accent); color: var(--accent); }
 
-/* ---------- 스테이지 (960×640) ---------- */
+/* ---------- 스테이지 (논리 960×640 — CSS 폭 추종 축소, §11) ---------- */
 
 #stage {
   position: relative;
-  width: 960px;
-  height: 640px;
+  width: 100%;
   background: #0d0f14;
+  touch-action: none; /* 게임 영역 — 스크롤/더블탭 줌 차단 (§11) */
 }
 
-#game-canvas { display: block; }
+#game-canvas {
+  display: block;
+  width: 100%;      /* 종횡비 3:2는 캔버스 고유 크기(960×640 × DPR)가 유지 */
+  height: auto;
+  touch-action: none;
+}
 
 .placing #game-canvas { cursor: crosshair; }
+
+/* 배치 취소 버튼 — 배치 모드 중에만 노출(.hidden 토글은 placement.js), 터치 필수 취소 수단 */
+#btn-cancel-placement {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 700;
+  background: rgba(80, 51, 57, 0.95);
+  border-color: #8a5560;
+}
+
+#btn-cancel-placement:active {
+  transform: translateX(-50%) translateY(1px); /* 공통 :active가 translateX를 지우지 않도록 */
+}
 
 /* ---------- 오버레이 화면 ---------- */
 
@@ -163,7 +197,7 @@ body {
 }
 
 .logo {
-  font-size: 56px;
+  font-size: clamp(34px, 10vw, 56px); /* 390px 폭에서도 한 줄 유지 — 데스크톱은 56px 그대로 */
   font-weight: 800;
   letter-spacing: 0.04em;
   background: linear-gradient(180deg, #bff0ff, var(--accent) 55%, var(--accent-2));
@@ -191,7 +225,7 @@ body {
 
 .howto li::before { content: '◆ '; color: var(--accent); }
 
-.result-title { font-size: 48px; font-weight: 800; }
+.result-title { font-size: clamp(30px, 9vw, 48px); font-weight: 800; }
 .result-title.win { color: var(--good); filter: drop-shadow(0 0 16px rgba(88, 214, 141, 0.4)); }
 .result-title.lose { color: var(--bad); filter: drop-shadow(0 0 16px rgba(240, 84, 84, 0.4)); }
 
@@ -231,13 +265,16 @@ body {
   border: 1px solid var(--line);
   border-radius: 10px;
   cursor: pointer;
+  touch-action: manipulation;
   transition: border-color 0.12s, background 0.12s, transform 0.08s, opacity 0.12s;
 }
 
-.shop-item:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: #333952;
-  transform: translateY(-2px);
+@media (hover: hover) {
+  .shop-item:hover:not(:disabled) {
+    border-color: var(--accent);
+    background: #333952;
+    transform: translateY(-2px);
+  }
 }
 
 .shop-item.selected {
@@ -278,8 +315,8 @@ body {
 #tower-panel {
   position: absolute;
   z-index: 5;
-  min-width: 200px;
-  max-width: 244px;
+  min-width: min(200px, calc(100vw - 24px));
+  max-width: min(244px, calc(100vw - 24px)); /* 좁은 화면에서도 뷰포트 안 (§11 클램프) */
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -311,6 +348,19 @@ body {
   padding-top: 6px;
   margin-top: 2px;
 }
+
+/* Lv3 고유 메커니즘 텍스트 (AC-28) — 활성(현재 Lv3) / 해금 예고(Lv2→3) 공용 */
+.panel-mech {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  border-top: 1px dashed var(--line);
+  padding-top: 6px;
+  margin-top: 2px;
+}
+
+.panel-mech b { color: var(--accent-2); }
+.panel-mech.unlock b { color: var(--gold); }
 
 #btn-upgrade, #btn-sell { width: 100%; }
 
@@ -359,3 +409,64 @@ body {
 .pulse-spend { animation: pulse-spend 0.3s ease-out; }
 .pulse-hit { animation: pulse-hit 0.35s ease-out; }
 .shake { animation: shake 0.3s; }
+
+/* ---------- v2 모바일: 세로 화면 반응형 (기준 390×844 — §11, AC-34) ---------- */
+
+@media (max-width: 720px) {
+  body { padding: 0; }
+
+  #app {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* HUD: 스탯 줄 + 버튼 줄 2단 랩 — 높이 고정 해제 */
+  #hud {
+    height: auto;
+    min-height: 48px;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding: 8px 10px;
+  }
+
+  #hud button { min-height: 44px; }
+  #hud-countdown { min-width: 96px; font-size: 11.5px; }
+
+  /* 상점: 4카드 유지, 카드 내부를 세로 배치로 전환 */
+  #shop {
+    height: auto;
+    min-height: 96px;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .shop-item {
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px 4px;
+    min-width: 0;
+    min-height: 88px;
+  }
+
+  .shop-icon { width: 36px; height: 36px; }
+  .shop-info { align-items: center; gap: 2px; }
+  .shop-name { font-size: 11px; }
+  .shop-cost { font-size: 11.5px; }
+
+  #tower-panel button,
+  .screen button { min-height: 44px; }
+
+  .howto { font-size: 12.5px; padding: 0 14px; }
+}
+
+/* 터치 장치 — 폭과 무관하게 44px 터치 타깃 보장 (§11) */
+@media (pointer: coarse) {
+  #hud button,
+  #tower-panel button,
+  .screen button,
+  .shop-item {
+    min-height: 44px;
+  }
+}

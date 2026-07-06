@@ -1,7 +1,7 @@
 /**
  * @module ui/screens (ui-dev)
  * 오버레이 화면 (DOM — #screen-title/#screen-victory/#screen-defeat, ID 계약 §7).
- * 타이틀: 로고(CSS 텍스트 — 계약 §5: UI 전용 이미지 없음) + 조작 설명 3줄 + #btn-start.
+ * 타이틀: 로고(CSS 텍스트 — 계약 §5: UI 전용 이미지 없음) + 조작 설명 4줄(터치 포함) + #btn-start.
  * 승리: 통계(kills, livesLeft) + #btn-restart-victory. 패배: 도달 웨이브 + #btn-restart-defeat.
  *
  * 구독: game:started {} — 전 화면 숨김
@@ -50,7 +50,8 @@ export function initScreens() {
     <h1 class="logo">크리스탈 가드</h1>
     <p class="logo-sub">Crystal Guard</p>
     <ul class="howto">
-      <li>하단 상점에서 타워를 골라 잔디 타일에 배치하세요 (우클릭·ESC 취소)</li>
+      <li>하단 상점에서 타워를 골라 잔디 타일에 배치하세요 (취소: 우클릭·ESC·배치 취소 버튼)</li>
+      <li>터치 화면에서는 1탭 = 위치 미리보기, 같은 칸을 한 번 더 탭 = 건설 확정</li>
       <li>웨이브 시작 버튼으로 몬스터 무리를 맞이하세요 — 총 ${WAVES.length || 10}웨이브</li>
       <li>몬스터가 수정에 도달하면 라이프가 깎입니다. 라이프 0 = 패배!</li>
     </ul>`);

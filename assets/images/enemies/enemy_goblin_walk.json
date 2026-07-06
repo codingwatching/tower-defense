@@ -1,0 +1,14 @@
+{
+  "frameW": 128,
+  "frameH": 128,
+  "frames": 4,
+  "fps": 8,
+  "sequences": {
+    "walk": [
+      0,
+      1,
+      2,
+      3
+    ]
+  }
+}

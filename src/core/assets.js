@@ -1,60 +1,90 @@
 /**
  * @module core/assets (engine-dev)
- * 에셋 로더 + 플레이스홀더 폴백. 계약 §5, §8.
+ * 에셋 로더 + 플레이스홀더 폴백 + 애니메이션 아틀라스. 계약 §5(v2 42키), §8, §10, §12.
+ *
+ * 매니페스트 값 형식 (§5-v2 — 로더는 JSON 존재를 추측(probe)하지 않는다):
+ *   - 문자열 경로 → 정적 이미지
+ *   - {img, atlas} → 걷기 스트립 PNG + 아틀라스 JSON 쌍
  *
  * get(key)는 **항상 그릴 수 있는 것**을 반환한다:
  *   1. 로딩 성공 → 이미지
  *   2. 불투명 배경(#FF00FF 크로마키) → 로드 시점 캔버스로 픽셀 제거 후 반환
  *   3. 로딩 실패/파일 없음 → 키 접두사별 단색 플레이스홀더 + 콘솔 경고 1회
  *      tower_*=파랑 사각 / enemy_*=빨강 원 / proj_*=노랑 점 /
- *      tile_grass=초록 사각 / tile_path=갈색 사각 / 기타(deco_/goal_/entrance_)=회색 사각
- * draw 호출부는 폴백을 신경 쓰지 않는다. 게임은 에셋 0개로도 실행 가능해야 함 (AC-21).
+ *      tile_grass*=초록 사각 / tile_path*=갈색 사각 / 기타(deco_/goal_/entrance_)=회색 사각
  *
- * 크로마키 판정: 이미 투명 픽셀이 있는 PNG는 손대지 않는다. 네 모서리가 전부 불투명
- * 마젠타(#FF00FF 근사)일 때만 배경으로 간주해 제거한다 — arcane 계열의 정상적인
- * 보라/자주색 스프라이트를 오폭하지 않기 위한 보수적 기준.
+ * getAnim(key)는 **항상 {image, atlas}**를 반환한다 (§10 강등 체인):
+ *   ① 쌍 정상 → 스트립 + 아틀라스 JSON
+ *   ② 아틀라스 실패/미등재 → 대응 정적 이미지(예: enemy_goblin_walk → enemy_goblin)
+ *      + 합성 단일 프레임 아틀라스 {frameW, frameH, frames:1, fps:1, sequences:{walk:[0]}}
+ *   ③ 이미지도 실패 → 카테고리 플레이스홀더 + 합성 아틀라스 (②와 동일 경로 — get이 처리)
+ * draw 호출부는 폴백·강등 여부를 신경 쓰지 않는다. 게임은 에셋 0개로도 실행 가능 (AC-21·29).
+ *
+ * 경로: 매니페스트의 상대 경로를 그대로 사용 — 선행 / 조립 금지 (§12 GitHub Pages 서브패스).
  */
 
-/** @type {Map<string, HTMLImageElement | HTMLCanvasElement>} */
+/** @typedef {{frameW: number, frameH: number, frames: number, fps: number, sequences: Record<string, number[]>}} Atlas */
+
+/** @type {Map<string, HTMLImageElement | HTMLCanvasElement>} 정적 drawable */
 const store = new Map();
-/** get(key) 실패 경고를 키당 1회로 제한. */
+/** @type {Map<string, {image: HTMLImageElement | HTMLCanvasElement, atlas: Atlas}>} */
+const animStore = new Map();
+/** get/getAnim 폴백 경고를 키당 1회로 제한. */
 const warnedKeys = new Set();
 
 const PLACEHOLDER_SIZE = 64;
 
 /**
  * 매니페스트 전체 프리로드. main이 부트스트랩에서 1회 await.
- * 실패해도 reject하지 않는다 — 실패 키는 폴백으로 진행하고 목록만 반환.
- * @param {Record<string, string>} manifest - assets/manifest.js의 MANIFEST
+ * 실패해도 reject하지 않는다 — 실패 항목은 폴백/강등으로 진행하고 목록만 반환.
+ * @param {Record<string, string | {img: string, atlas: string}>} manifest
  * @returns {Promise<{loaded: number, failed: string[]}>}
+ *   failed 표기: 정적 키는 `키`, 쌍의 부분 실패는 `키.img` / `키.atlas`
  */
 export async function loadAssets(manifest) {
   const entries = Object.entries(manifest || {});
   /** @type {string[]} */
   const failed = [];
+  let loaded = 0;
 
   await Promise.all(
-    entries.map(async ([key, url]) => {
-      try {
-        const img = await loadImage(url);
-        store.set(key, stripChromaKey(key, img));
-      } catch {
-        failed.push(key);
+    entries.map(async ([key, spec]) => {
+      if (typeof spec === 'string') {
+        try {
+          store.set(key, stripChromaKey(key, await loadImage(spec)));
+          loaded++;
+        } catch {
+          failed.push(key);
+        }
+        return;
       }
+      // {img, atlas} 쌍 — 병렬 로드, 부분 실패는 강등 체인으로 (§10)
+      const [imgRes, atlasRes] = await Promise.allSettled([loadImage(spec.img), loadAtlas(spec.atlas)]);
+      const imgOk = imgRes.status === 'fulfilled';
+      const atlasOk = atlasRes.status === 'fulfilled';
+      if (imgOk && atlasOk) {
+        animStore.set(key, { image: stripChromaKey(key, imgRes.value), atlas: atlasRes.value });
+        loaded++;
+        return;
+      }
+      // 스트립만으로는 프레임 정보가 없어 그릴 수 없다 — 쌍이 깨지면 통째로 강등(getAnim ②③)
+      if (!imgOk) failed.push(`${key}.img`);
+      if (!atlasOk) failed.push(`${key}.atlas`);
     })
   );
 
   if (failed.length > 0) {
     console.warn(
-      `[assets] ${failed.length}/${entries.length}개 로딩 실패 — 플레이스홀더로 진행: ${failed.join(', ')}`
+      `[assets] ${failed.length}건 로딩 실패 — 플레이스홀더/강등으로 진행: ${failed.join(', ')}`
     );
   }
-  return { loaded: entries.length - failed.length, failed };
+  return { loaded, failed };
 }
 
 /**
- * 로드된 drawable 반환. loadAssets 완료 후에만 유효.
- * @param {string} key - MANIFEST 키 (§5의 18키 외 사용 금지)
+ * 로드된 정적 drawable 반환. loadAssets 완료 후에만 유효.
+ * 애니메이션 키({img,atlas} 등재 키)는 getAnim을 쓸 것 — get은 정적 전용.
+ * @param {string} key - MANIFEST 키 (§5의 42키 외 사용 금지)
  * @returns {HTMLImageElement | HTMLCanvasElement} 항상 drawable
  */
 export function get(key) {
@@ -67,6 +97,33 @@ export function get(key) {
   const ph = makePlaceholder(key);
   store.set(key, ph); // 키당 1회만 생성
   return ph;
+}
+
+/**
+ * 애니메이션 조회 — 항상 {image, atlas} 반환 (§10 강등 체인 ①→②→③).
+ * 강등 시 대응 정적 키(말미 '_walk' 제거)로 get()을 경유하므로
+ * 정적 이미지가 있으면 그것을, 없으면 카테고리 플레이스홀더를 단일 프레임으로 쓴다.
+ * @param {string} key - 예: 'enemy_goblin_walk'
+ * @returns {{image: HTMLImageElement | HTMLCanvasElement, atlas: Atlas}}
+ */
+export function getAnim(key) {
+  const hit = animStore.get(key);
+  if (hit) return hit;
+
+  const baseKey = key.replace(/_walk$/, '');
+  if (!warnedKeys.has(`anim:${key}`)) {
+    warnedKeys.add(`anim:${key}`);
+    console.warn(`[assets] '${key}' 애니메이션 미가용 — '${baseKey}' 정적 단일 프레임으로 강등`);
+  }
+  const image = get(baseKey);
+  const w = image.naturalWidth || image.width;
+  const h = image.naturalHeight || image.height;
+  const fallback = {
+    image,
+    atlas: { frameW: w, frameH: h, frames: 1, fps: 1, sequences: { walk: [0] } },
+  };
+  animStore.set(key, fallback); // 키당 1회만 합성
+  return fallback;
 }
 
 /**
@@ -83,7 +140,33 @@ function loadImage(url) {
 }
 
 /**
+ * 아틀라스 JSON 로드 + 검증 (§10 형식). 실패/형식 불량은 reject → 강등 체인.
+ * @param {string} url - 상대 경로 (§12)
+ * @returns {Promise<Atlas>}
+ */
+async function loadAtlas(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`atlas fetch ${res.status}: ${url}`);
+  const json = await res.json();
+  const frameW = Number(json.frameW);
+  const frameH = Number(json.frameH);
+  const frames = Number(json.frames);
+  if (!Number.isFinite(frameW) || frameW <= 0 || !Number.isFinite(frameH) || frameH <= 0 ||
+      !Number.isInteger(frames) || frames < 1) {
+    throw new Error(`atlas 형식 불량: ${url}`);
+  }
+  const fps = Number.isFinite(Number(json.fps)) && Number(json.fps) > 0 ? Number(json.fps) : 8; // §10 기본 8
+  const sequences =
+    json.sequences && typeof json.sequences === 'object'
+      ? json.sequences
+      : { walk: Array.from({ length: frames }, (_, i) => i) };
+  return { frameW, frameH, frames, fps, sequences };
+}
+
+/**
  * 불투명 #FF00FF 배경 제거. 배경이 아니면 원본 이미지를 그대로 반환.
+ * 이미 투명 픽셀이 있는 PNG는 손대지 않는다 — 네 모서리가 전부 불투명 마젠타일 때만
+ * 배경으로 간주 (arcane 계열의 정상적인 보라/자주색 스프라이트 오폭 방지).
  * @param {string} key
  * @param {HTMLImageElement} img
  * @returns {HTMLImageElement | HTMLCanvasElement}
@@ -132,7 +215,7 @@ function isChromaPixel(px, i) {
 }
 
 /**
- * 키 접두사별 단색 플레이스홀더 캔버스 (계약 §5 폴백 표).
+ * 키 접두사별 단색 플레이스홀더 캔버스 (계약 §5 폴백 표 — v2: tile_grass·tile_path 변형 키 포함).
  * @param {string} key
  * @returns {HTMLCanvasElement}
  */
@@ -156,11 +239,11 @@ function makePlaceholder(key) {
     ctx.beginPath();
     ctx.arc(s / 2, s / 2, s * 0.15, 0, Math.PI * 2);
     ctx.fill();
-  } else if (key === 'tile_grass') {
-    ctx.fillStyle = '#5aa74a'; // 잔디 초록
+  } else if (key.startsWith('tile_grass')) {
+    ctx.fillStyle = '#5aa74a'; // 잔디 초록 (변형 포함)
     ctx.fillRect(0, 0, s, s);
-  } else if (key === 'tile_path') {
-    ctx.fillStyle = '#8b6f47'; // 길 갈색
+  } else if (key.startsWith('tile_path')) {
+    ctx.fillStyle = '#8b6f47'; // 길 갈색 (방향 변형 포함)
     ctx.fillRect(0, 0, s, s);
   } else {
     ctx.fillStyle = '#8a8a8a'; // deco_/goal_/entrance_/미지 키 = 회색 사각

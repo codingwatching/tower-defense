@@ -40,7 +40,7 @@ import { initPath } from './map/path.js';
 import { buildBackground, drawBackground } from './map/tilemap.js';
 
 import { initEconomy, getGold, getLives } from './systems/economy.js';
-import { initCombat, updateCombat, drawEntities, towers, enemies, projectiles } from './systems/combat.js';
+import { initCombat, updateCombat, drawEntities, towers, enemies, projectiles, zones } from './systems/combat.js';
 import { initWaves, updateWaves } from './systems/waves.js';
 
 import { initHud } from './ui/hud.js';
@@ -212,6 +212,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     towers, // systems/combat의 live 배열 참조
     enemies,
     projectiles,
+    zones, // v2 §8: 캐논 Lv3 화상 장판 (combat 소유 live 배열)
     emit, // QA 이벤트 주입용
     data: { TOWERS, ENEMIES, WAVES, BALANCE, LEVEL },
   };

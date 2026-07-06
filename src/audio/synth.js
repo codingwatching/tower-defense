@@ -59,6 +59,9 @@ export function initSynth() {
     if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
   };
   window.addEventListener('pointerdown', unlock, { capture: true });
+  // 터치 포인터의 사용자 활성화는 HTML 스펙상 pointerup/touchend 시점에 부여된다 —
+  // iOS Safari에서 pointerdown만으로는 resume이 거부될 수 있어 pointerup에서 재시도.
+  window.addEventListener('pointerup', unlock, { capture: true });
   window.addEventListener('keydown', unlock, { capture: true });
 }
 
