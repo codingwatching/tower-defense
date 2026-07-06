@@ -1,0 +1,361 @@
+/*
+ * css/style.css — ui-dev 소유 (레이아웃 시드: system-architect).
+ * 구조 계약(§7): #app 폭 960, HUD 바(48px) + 960×640 캔버스(#stage) + 상점 바(96px) 세로 스택.
+ * 톤: 어두운 슬레이트 크롬 + 수정(시안/보라) 포인트 — 밝은 카툰 판타지 필드와 대비.
+ */
+:root {
+  --bg: #14161d;
+  --chrome: #232735;
+  --chrome-2: #2c3145;
+  --line: #3b415a;
+  --text: #e8ecf5;
+  --text-dim: #9aa3bd;
+  --accent: #57d7ff;   /* 수정 시안 */
+  --accent-2: #9a7bff; /* 아케인 보라 */
+  --gold: #ffd15c;
+  --lives: #ff7a7a;
+  --good: #58d68d;
+  --bad: #f05454;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+  user-select: none; /* 게임 UI — 텍스트 드래그 방지 */
+}
+
+#app {
+  width: 960px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.hidden { display: none !important; }
+
+/* ---------- 공통 버튼 ---------- */
+
+#hud button,
+#tower-panel button,
+.screen button {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--chrome-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, opacity 0.12s, transform 0.05s;
+}
+
+#hud button:hover:not(:disabled),
+#tower-panel button:hover:not(:disabled),
+.screen button:hover {
+  border-color: var(--accent);
+  filter: brightness(1.12);
+}
+
+#hud button:active:not(:disabled),
+#tower-panel button:active:not(:disabled),
+.screen button:active {
+  transform: translateY(1px);
+}
+
+#hud button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* 비활성 클릭도 감지해야 하므로(에러음·흔들림) 클릭을 컨테이너로 통과시킨다 */
+.shop-item:disabled,
+#tower-panel button:disabled { pointer-events: none; }
+
+/* ---------- HUD (상단 48px) ---------- */
+
+#hud {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 14px;
+  background: linear-gradient(var(--chrome-2), var(--chrome));
+  border-bottom: 1px solid var(--line);
+}
+
+.hud-stat { display: inline-flex; align-items: baseline; gap: 6px; }
+
+.hud-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.hud-value {
+  display: inline-block; /* transform 애니메이션용 */
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+#hud-gold .hud-value { color: var(--gold); }
+#hud-lives .hud-value { color: var(--lives); }
+#hud-wave .hud-value { color: var(--accent); }
+#hud-lives .hud-value.danger { animation: blink 1s step-end infinite; }
+
+#hud-countdown {
+  font-size: 12px;
+  color: var(--accent);
+  min-width: 116px; /* 카운트다운 등장 시 레이아웃 밀림 방지 */
+}
+
+#btn-wave-start { margin-left: auto; min-width: 96px; }
+
+#btn-wave-start:not(:disabled) {
+  background: linear-gradient(#5fd9ff, #2fa8d8);
+  border-color: #7fe3ff;
+  color: #06283a;
+  font-weight: 700;
+}
+
+#btn-speed.active,
+#btn-mute.active { border-color: var(--accent); color: var(--accent); }
+
+/* ---------- 스테이지 (960×640) ---------- */
+
+#stage {
+  position: relative;
+  width: 960px;
+  height: 640px;
+  background: #0d0f14;
+}
+
+#game-canvas { display: block; }
+
+.placing #game-canvas { cursor: crosshair; }
+
+/* ---------- 오버레이 화면 ---------- */
+
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  text-align: center;
+  background: radial-gradient(ellipse at center,
+    rgba(21, 26, 40, 0.88), rgba(10, 12, 18, 0.96));
+}
+
+.screen-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.logo {
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: linear-gradient(180deg, #bff0ff, var(--accent) 55%, var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 18px rgba(87, 215, 255, 0.35));
+}
+
+.logo-sub {
+  color: var(--text-dim);
+  font-size: 13px;
+  letter-spacing: 0.5em;
+  margin-left: 0.5em; /* letter-spacing 좌우 비대칭 보정 */
+  text-transform: uppercase;
+}
+
+.howto {
+  list-style: none;
+  color: var(--text-dim);
+  font-size: 13.5px;
+  line-height: 2;
+  text-align: left;
+}
+
+.howto li::before { content: '◆ '; color: var(--accent); }
+
+.result-title { font-size: 48px; font-weight: 800; }
+.result-title.win { color: var(--good); filter: drop-shadow(0 0 16px rgba(88, 214, 141, 0.4)); }
+.result-title.lose { color: var(--bad); filter: drop-shadow(0 0 16px rgba(240, 84, 84, 0.4)); }
+
+.result-sub { color: var(--text-dim); font-size: 14px; }
+.stats { font-size: 15px; }
+
+.screen button {
+  font-size: 15px;
+  font-weight: 700;
+  padding: 10px 28px;
+  background: linear-gradient(#5fd9ff, #2fa8d8);
+  border-color: #7fe3ff;
+  color: #06283a;
+}
+
+/* ---------- 상점 (하단 96px) ---------- */
+
+#shop {
+  height: 96px;
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  padding: 10px 12px;
+  background: linear-gradient(var(--chrome), #1d2130);
+  border-top: 1px solid var(--line);
+}
+
+.shop-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--chrome-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, transform 0.08s, opacity 0.12s;
+}
+
+.shop-item:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #333952;
+  transform: translateY(-2px);
+}
+
+.shop-item.selected {
+  border-color: var(--accent);
+  background: #31405c;
+  box-shadow: 0 0 0 2px rgba(87, 215, 255, 0.35), 0 0 18px rgba(87, 215, 255, 0.25);
+}
+
+.shop-item:disabled { opacity: 0.4; filter: saturate(0.4); }
+
+.shop-icon {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.shop-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+
+.shop-name { font-size: 13px; font-weight: 700; white-space: nowrap; }
+
+.shop-cost {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 타워 정보 패널 ---------- */
+
+#tower-panel {
+  position: absolute;
+  z-index: 5;
+  min-width: 200px;
+  max-width: 244px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(30, 34, 49, 0.96);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.panel-title { font-size: 15px; font-weight: 800; }
+.panel-level { color: var(--accent); font-size: 12.5px; margin-left: 6px; }
+
+#panel-info { display: flex; flex-direction: column; gap: 4px; }
+
+.panel-stat {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.panel-stat b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.panel-next {
+  font-size: 11.5px;
+  color: var(--accent);
+  border-top: 1px dashed var(--line);
+  padding-top: 6px;
+  margin-top: 2px;
+}
+
+#btn-upgrade, #btn-sell { width: 100%; }
+
+#btn-upgrade:not(:disabled) {
+  background: linear-gradient(#58d68d, #2e9e63);
+  border-color: #7fe0a8;
+  color: #06301b;
+  font-weight: 700;
+}
+
+#btn-upgrade:disabled { opacity: 0.45; }
+
+#btn-sell { background: #503339; border-color: #8a5560; }
+
+/* ---------- 피드백 애니메이션 ---------- */
+
+@keyframes pulse-gain {
+  0% { transform: scale(1.25); filter: brightness(1.6); }
+  100% { transform: scale(1); }
+}
+
+@keyframes pulse-spend {
+  0% { transform: scale(0.85); filter: brightness(0.5); }
+  100% { transform: scale(1); }
+}
+
+@keyframes pulse-hit {
+  0%, 100% { transform: none; }
+  25% { transform: translateX(-3px); filter: brightness(1.8); }
+  75% { transform: translateX(3px); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: none; }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+
+@keyframes blink {
+  50% { opacity: 0.35; }
+}
+
+.pulse-gain { animation: pulse-gain 0.3s ease-out; }
+.pulse-spend { animation: pulse-spend 0.3s ease-out; }
+.pulse-hit { animation: pulse-hit 0.35s ease-out; }
+.shake { animation: shake 0.3s; }
