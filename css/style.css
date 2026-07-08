@@ -115,6 +115,7 @@ body {
 #hud-gold .hud-value { color: var(--gold); }
 #hud-lives .hud-value { color: var(--lives); }
 #hud-wave .hud-value { color: var(--accent); }
+#hud-score .hud-value { color: var(--accent-2); } /* (v3) 점수 — 아케인 보라 */
 #hud-lives .hud-value.danger { animation: blink 1s step-end infinite; }
 
 #hud-countdown {
@@ -240,6 +241,223 @@ body {
   border-color: #7fe3ff;
   color: #06283a;
 }
+
+/* ---------- (v3) 결과 화면 점수 분해 패널 ---------- */
+
+.score-panel {
+  width: min(340px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 18px;
+  background: rgba(30, 34, 49, 0.7);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.score-panel:empty { display: none; } /* 점수 시스템 부재 시(§1) 빈 패널 숨김 */
+
+.score-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.score-total-label { font-size: 12px; letter-spacing: 0.08em; color: var(--text-dim); }
+
+.score-total-value {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+  filter: drop-shadow(0 0 12px rgba(154, 123, 255, 0.4));
+}
+
+.score-breakdown {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+}
+
+.score-breakdown li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.score-breakdown b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.score-best {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+}
+
+.score-best b { color: var(--gold); font-variant-numeric: tabular-nums; }
+
+.new-record {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--gold);
+  letter-spacing: 0.04em;
+  text-align: center;
+  filter: drop-shadow(0 0 14px rgba(255, 209, 92, 0.55));
+  animation: record-pop 0.5s ease-out;
+}
+
+@keyframes record-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  60% { transform: scale(1.18); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* 결과 화면 액션 버튼 행 (다음/재도전/스테이지 선택) — 세로에서 랩 */
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+#btn-next-victory {
+  background: linear-gradient(#9a7bff, #6f4fe0);
+  border-color: #b7a2ff;
+  color: #120a2e;
+}
+
+#btn-stages-victory,
+#btn-stages-defeat {
+  background: var(--chrome-2);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+/* ---------- (v3) 스테이지 선택 화면 ---------- */
+
+#screen-stage-select {
+  /* .screen 상속 — 다른 오버레이와 동일. 카드가 많아 세로 정렬 + 내부 스크롤 허용 */
+  justify-content: flex-start;
+  padding: 22px 16px;
+  overflow-y: auto;
+}
+
+.stage-select-body { width: 100%; max-width: 720px; gap: 18px; }
+
+.stage-select-title {
+  font-size: clamp(22px, 6vw, 30px);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.stage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  width: 100%;
+}
+
+.stage-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--chrome-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  touch-action: manipulation;
+  transition: border-color 0.12s, transform 0.08s, box-shadow 0.12s, opacity 0.12s;
+}
+
+@media (hover: hover) {
+  .stage-card:not(.locked):hover {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4), 0 0 16px rgba(87, 215, 255, 0.2);
+  }
+}
+
+.stage-card:not(.locked):active { transform: translateY(0); }
+
+.stage-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  background: #0d0f14;
+  image-rendering: pixelated; /* 미니맵 축소 시 또렷하게 */
+}
+
+.stage-meta { display: flex; flex-direction: column; gap: 2px; }
+
+.stage-num {
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+}
+
+.stage-name { font-size: 15px; font-weight: 700; }
+
+.stage-best {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+  min-height: 15px; /* 미기록↔기록 전환 시 카드 높이 밀림 방지 */
+}
+
+/* 클리어 표식 — 우상단 배지 (해금+클리어 시에만) */
+.stage-cleared-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #06301b;
+  background: linear-gradient(#58d68d, #2e9e63);
+  border-radius: 6px;
+  padding: 3px 7px;
+  display: none;
+}
+
+.stage-card.cleared .stage-cleared-badge { display: block; }
+
+/* 잠금 오버레이 — 미니맵 위에 어둡게 + 자물쇠 안내 */
+.stage-lock {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: rgba(13, 15, 20, 0.82);
+  border-radius: 12px;
+}
+
+.stage-card.locked {
+  cursor: not-allowed;
+  opacity: 0.92;
+  filter: saturate(0.5);
+}
+
+.stage-card.locked .stage-lock { display: flex; }
 
 /* ---------- 상점 (하단 96px) ---------- */
 
@@ -459,6 +677,18 @@ body {
   .screen button { min-height: 44px; }
 
   .howto { font-size: 12.5px; padding: 0 14px; }
+
+  /* (v3) 스테이지 선택: 세로에서 2열 유지 — 5카드가 스크롤 가능·잘림 없음(AC-34) */
+  #screen-stage-select { padding: 16px 12px; }
+  .stage-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stage-card { padding: 8px; }
+  .stage-name { font-size: 13px; }
+  .stage-lock { font-size: 11px; }
+
+  /* (v3) 결과 액션 버튼 — 세로에서 폭 채워 44px 타깃 보장 */
+  .result-actions { width: 100%; padding: 0 16px; }
+  .result-actions button { flex: 1 1 44%; min-height: 44px; }
+  .score-panel { width: 100%; }
 }
 
 /* 터치 장치 — 폭과 무관하게 44px 터치 타깃 보장 (§11) */

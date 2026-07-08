@@ -451,3 +451,278 @@ QA 독립 스크립트 `qa-verify-data.mjs`(scratchpad) 56/56 통과 + 담당자
 | 보류 V-1~V-7 | **전건 해소** (V-7 중 헤드리스 게이트 완료 — AC-23~26 로직·28·30·31·32·37 판정 근거 확보) |
 | 헤드리스 게이트 | 문법·이벤트 36종·스키마·메커니즘 28케이스·D11 불변·상대 경로·snake_case·sim 29항목·통합 시뮬 — 전부 그린 |
 | 이관 | AC-20/27(육안)/29(육안)/31(육안)/33/34/35 → playtester (기술 참고 4건 등재) / AC-36 → 사용자 Pages 조치 후 조건부 |
+
+---
+
+# ═══ v3 사이클 (계약 v3.0, GDD v3.0 — 2026-07-08) ═══
+
+기준: 계약 v3.0 (§3.10 이벤트 43종, §4.7~4.11 스키마, §14 흐름, §15 불변), GDD v3.0 (D13~D18, AC-38~48). 심각도 P0~P3 동일.
+v3 특화 경계면 6종(오케스트레이터 지시): ① 신규 이벤트 7종 emit↔on+페이로드 ② 점수 집계 정합 ③ LEVELS[0]/스테이지1 회귀 불변 ④ 저장 스키마↔로드 폴백 ⑤ 상태머신 stage-select 도달성·해금 캐스케이드 ⑥ AC-38~48 게이트+sim 스테이지 회귀.
+
+## [검증 회차 20] v3 선행 감사 (Task #10 개시 — Wave A 작업 전 baseline 고정) — 2026-07-08
+
+Wave A(map-designer #6 LEVELS·wave-balancer #7 밸런스/점수·engine-dev #8 storage/score/progress/main) 병렬 착수 전 선제 검증. **결함 0건 — baseline 전건 그린. v3 구현은 아직 미착지(전 신규 모듈 TODO 스텁, levels.js는 v2 단일 LEVEL 그대로).**
+
+| # | 항목 | 판정 | 확인 방법 |
+|---|---|---|---|
+| 20-1 | 문법 게이트 (src 전 36파일 + sim) | 통과 | `node --input-type=module --check` 36/36 파스 에러 0 (신규 5파일 storage/score/progress/stageselect/scoring 포함) + `node --check scripts/sim.mjs` PASS |
+| 20-2 | sim.mjs v2 회귀 baseline (AC-37 유지) | 통과 | `node scripts/sim.mjs` exit 0, 29/29 — 무전략 W6 실패·킬존 잔여 11/20(55%, 밴드 정중앙). **스테이지 회귀(STAGE_WAVES·hpScale) 미도입 상태 기준선** — wave-balancer #7 착지 후 스테이지별 재실행 예정 |
+| 20-3 | §12 상대 경로 감사 (선행) | 통과 | 계약 grep(선행 `/` src/href/url()/fetch/import) 매치 0건 — 현행 전체 코드베이스 |
+| 20-4 | 매니페스트 42키 불변 (§5.5 신규 키 0개) | 통과 | 동적 import 키 수 42 — v3 신규 매니페스트 키 0개 계약 확인 (D17: 맵=기하+tint 재조합, 카드=미니맵 렌더) |
+| 20-5 | v3 신규 모듈 뼈대 ↔ 계약 정합 | 통과 | storage.js(loadSave/saveSave·STORAGE_KEY='crystal_guard.v1'·DEFAULT_SAVE §4.11 정합), score.js(구독 6종 JSDoc §14.2·getScore·읽기 API 없음·economy 패턴), progress.js(getUnlockedCount/getBestScore/isUnlocked/getSnapshot §14.3·해금 규칙 D14 주석), scoring.js(SCORING 5키 killPoints+waveClearBonus+waveScale+lifeBonusPerLife §4.10 문자 단위), stageselect.js(발행 ui:stage-selected·구독 record-updated/unlocked·읽기 progress §1). **전부 TODO 스텁 — 로직 미구현** |
+| 20-6 | index.html §7 v3 DOM 미착지 확인 | 기록(미결) | `#screen-stage-select`·`#hud-score`·`.stage-card[data-stage]`·결과화면 스테이지복귀 버튼 **부재** — architect index.html v3 갱신 대기 (§7 "architect는 컨테이너와 ID만 계약"). `#btn-cancel-placement`(v2)만 존재 |
+| 20-7 | main/hud/screens v3 배선 미착지 확인 | 기록(미결) | main.js: stage-select 상태·stage:started·initScore/Progress/StageSelect·LEVELS·window.GAME.{stageIndex,score,progress} 전부 부재. hud.js: #hud-score/score:changed 부재. screens.js: score:finalized/스테이지복귀 부재 — engine-dev #8·ui-dev #9 대기 |
+| 20-8 | §15 불변 baseline 고정 | 기록 | levels.js가 v2 커밋 4f7d346과 **byte-identical**(git diff 0, md5 07dd7cd7) — map-designer #6 LEVELS 착지 시 이 baseline으로 LEVELS[0] 문자 단위 diff. waves.js=WAVES만·balance.js=BALANCE만(STAGE_* 미도입) |
+
+### v3 회귀 하네스 준비 (재사용 도구)
+
+- `_workspace/qa_scratch/levels_v2_baseline.js` — v2 커밋 4f7d346의 levels.js 추출(md5 07dd7cd7). LEVELS[0] 회귀 대조 기준 원본.
+- `_workspace/qa_scratch/qa-verify-v3-levels0.mjs` — LEVELS[0] === v2 문자 단위 불변 자동 검증(waypoints·tiles·decoTiles JSON 대조 + §13 D11 불변량 재확인 + LEVEL 별칭 동일 객체 + tint null). 현재는 LEVELS export 부재로 정상 reject(하네스 동작 확인) — map-designer #6 착지 시 즉시 실행.
+
+### v3 보류 (담당 완료 통지 시 검증)
+
+| # | 경계면 | 대기 대상 |
+|---|---|---|
+| W3-1 | 신규 이벤트 7종 emit↔on diff + 페이로드 문자 단위 (ui:stage-select-requested/stage-selected/stage:started/score:changed/score:finalized/stage:record-updated/stage:unlocked) | engine-dev #8 + ui-dev #9 |
+| W3-2 | 점수 집계 정합 — score.js 가산값 == scoring.js 데이터, 판당 finalized 1회, 판매/업글/배속 무영향, kill/wave 소계 분해 | engine-dev #8 (+ wave-balancer #7 수치) |
+| W3-3 | LEVELS[0] byte-identity(qa-verify-v3-levels0.mjs) + STAGE_WAVES[crystal_valley]===WAVES + STAGE_BALANCE.crystal_valley={120,20,1.0} | map-designer #6 + wave-balancer #7 |
+| W3-4 | 신규 4스테이지 waypoints/tiles 정합성(PATH==waypoints), 기하 난이도 단조(경로길이·코너·건설밀도 1<2<3<4<5), decoTiles 스키마 | map-designer #6 |
+| W3-5 | 저장 스키마↔로드 폴백(손상/부재/버전불일치→DEFAULT_SAVE), unlockedCount [1,5] 클램프, bestScores 길이5 정규화 | engine-dev #8 |
+| W3-6 | 상태머신 stage-select 도달성·이탈, 해금 캐스케이드 단조성(N클리어→N+1, 재클리어 무해), stage:started→game:started 순서 불변식 | engine-dev #8 |
+| W3-7 | index.html §7 v3 DOM(#screen-stage-select·#hud-score·.stage-card·복귀 버튼) + hud 점수 표시 + screens 분해 표시 | architect + ui-dev #9 |
+| W3-8 | AC-38~48 통합 게이트 + sim.mjs 스테이지 회귀 exit 0 + 이벤트 43종 전역 diff + 상대경로 재감사 | 전 모듈 완료 후 |
+
+---
+
+## [검증 회차 21] 대상: engine-dev v3 코어 (Task #8 완료 — storage/score/progress/economy/main) — 2026-07-08
+
+기준: 계약 v3.0 §3.10·§4.10·§4.11·§14. **결함 0건.** QA 독립 헤드리스(실 이벤트 버스 구동, 자체 보고 불신) — `qa-verify-v3-score-progress.mjs`(28단언)·`qa-verify-v3-unlock.mjs`(26단언) 전건 통과.
+
+| # | 경계면 | 판정 | 확인 방법 |
+|---|---|---|---|
+| 21-1 | 문법 게이트 (변경 5파일) | 통과 | storage/score/progress/economy/main `node --input-type=module --check` 파스 에러 0 |
+| 21-2 | **저장 스키마↔로드 폴백** (W3-5, AC-48·§4.11) | 통과 | 가짜 localStorage 주입 독립 검증: 부재/손상JSON/버전불일치(99) 전부 freshDefault 폴백(크래시 0), unlockedCount [1,5] 클램프(99→5·-3→1), bestScores 길이5 정규화([100,-5,'x',200,300,999]→[100,0,0,200,300]), 저장 예외(QuotaExceeded) 흡수(throw 없음·경고만), 저장→로드 왕복 유지. DEFAULT_SAVE 공유 참조 오염 방지(freshDefault 새 인스턴스) 확인 |
+| 21-3 | **점수 집계 정합** (W3-2, §4.10·§14.2) | 통과 | 실 버스 구동: killPoints 종류별 정확 가산(goblin 5·golem 200), score:changed{source,delta,score} 페이로드 일치, **누수(enemy:escaped) 점수 무영향**(combat.js가 killed/escaped 별도 발행 — 141/201/254행 확인), 미정의 타입 0점+무발행+경고1회, 웨이브 점수 공식 `waveClearBonus×(1+(index-1)(waveScale-1))` (waveScale=1.0 균등 검증), **판매/업글/건설/배속 점수 불변**(score 미구독) |
+| 21-4 | **score:finalized 분해·1회** (AC-46·§14.2) | 통과 | game:won→finalized 정확히 1회, {stageIndex(stage:started 캐시), outcome:'won', kill, wave, life, total} 전 필드, life=livesLeft×lifeBonusPerLife(7×25=175), total===kill+wave+life, kill+wave==finalize 전 getScore(). 패배: outcome 'over'·life 0 |
+| 21-5 | **해금 캐스케이드 단조성** (W3-6, D14·§14.3·AC-40/47) | 통과 | 실 버스 구동 26단언: 초기 S1만 해금, N클리어→N+1 해금+stage:unlocked{stageIndex:idx+1}, **재클리어 무해금**(조건 idx+1===unlockedCount), 낮은점수 최고점 유지·isNewBest false, 신기록 경신 isNewBest true, **건너뛴 클리어(S4 미해금 상태) 최고점만·해금 무발행(단조성)**, 패배 최고점만·해금 없음, unlockedCount 최대 5 상한(S5 클리어→6번째 해금 없음), getSnapshot 복사본(외부 변경 격리) |
+| 21-6 | 이벤트 계약 diff — v3 7종 engine 측 | 통과 | emit↔on 위치 전수: stage:started(main emit 2·economy/score on 2), score:changed(score emit 2), score:finalized(score emit↔progress on), stage:record-updated/unlocked(progress emit). 페이로드 필드 §3.10 문자 단위. **미착지 구독처(ui:stage-select-requested의 ui/screens emit, score:changed의 hud on 등)는 ui-dev #9·entity #11 대기** — engine 측 계약은 완비 |
+| 21-7 | 버스 순서 불변식 (§14.2 최종 웨이브 보너스) | 통과 | events.js:55 등록 순서 동기 호출 확인 → main.js:251 initScore(wave:cleared 구독)가 254 initWinLoseDetection(승리 판정)보다 먼저 등록 → 최종 wave:cleared가 score 웨이브 가산 후 game:won→finalized 순. 구독 순서 의존을 등록 시점으로 보장 |
+| 21-8 | 상태머신 §8·오케스트레이션 §14.1 (정적) | 통과 | main: 'stage-select' 상태 추가, ui:start/stage-select-requested→goStageSelect, ui:stage-selected→enterStage, 재도전 캐시 stageIndex 재진입, enterStage 순서 initGrid/Path/Background→stage:started→game:started(불변식), 승리 total=waveTotal(wave:started 캐시)>0?:WAVES.length 폴백(D16). resolveLevels() LEVELS 부재 시 [LEVEL] 폴백(§15 v2 회귀 보존). **실런타임 도달성은 브라우저 스모크 소관(환경 사유)** |
+| 21-9 | window.GAME v3 훅 (§8) | 통과 | stageIndex/score/progress getter + data.{LEVELS,SCORING} 추가(main.js:299-313). LEVEL은 LEVELS[0] 별칭 유지 |
+| 21-10 | economy stage:started 캐싱 회귀 (§4.9) | 통과 | resolveStageBalance: STAGE_BALANCE[stageId] 캐시→game:started 리셋, 부재 시 BALANCE 폴백(120/20 회귀 보존). **sim.mjs exit 0, 29/29 유지**(economy 변경 후 재실행) — AC-37 무회귀. 상대경로 재감사 0건. 계약 외 이벤트 발행 0(engine 신규 emit 전수 §3 존재) |
+
+### 회차 21 잔여 (미착지 의존 — 담당 완료 통지 시 검증)
+
+- W3-2/점수 **최종 수치**: scoring.js는 현재 스키마 예시값(killPoints goblin5…golem200, waveClearBonus50, waveScale1.0, lifeBonusPerLife25). wave-balancer #7이 sim 튜닝값 확정 시 score 집계는 데이터만 읽으므로 로직 불변 — 수치 착지 시 재대조.
+- W3-1 완결: score:changed의 hud 구독, ui:stage-select-requested의 screens 발행 등 **ui-dev #9** 착지 시 emit↔on 쌍 완성 확인.
+- W3-6 런타임: stage-select 상태 실도달·이탈은 브라우저 스모크(playtester).
+
+---
+
+## [검증 회차 22] 대상: entity-dev v3 웨이브 캐싱 (Task #11 완료 — waves.js) — 2026-07-08
+
+기준: 계약 v3.0 §4.8·§4.9·§14.1. **결함 0건.** QA 독립 헤드리스(`qa-verify-v3-waves-cache.mjs`, 실 이벤트 버스 구동) 전건 통과. 변경 파일: `src/systems/waves.js`만 (enemy.js 무수정 — 담당 주장과 일치, git 대조).
+
+| # | 경계면 | 판정 | 확인 방법 |
+|---|---|---|---|
+| 22-1 | 문법 게이트 | 통과 | waves.js `node --input-type=module --check` 파스 에러 0 |
+| 22-2 | 경계면: waves가 stage:started 신규 구독 (W3-1 부분) | 통과 | on('stage:started', {stageId})(waves.js:88) ↔ main emit(main.js:187). 페이로드 stageId 소비. waves 발행 이벤트는 v2와 동일 5종(wave:started/cleared/countdown, enemy:spawned, boss:spawned) — 계약 외 신규 0 |
+| 22-3 | **HP 배수 위치** (§4.9) | 통과 | Enemy(type, hpMultiplier×hpScale) — waves.js:165가 곱해 전달. Enemy 생성자 `(type, hpMultiplier)` 시그니처 불변(enemy.js:64), maxHp=round(def.hp×hpMultiplier)(enemy.js:71). 실 HP = base×WaveDef.hpMultiplier×hpScale. 독립 검증: goblin base 30×1.06×1 → maxHp 32 정확 |
+| 22-4 | 데이터 소비 안전 접근 (§4.8·§4.9) | 통과 | STAGE_WAVES/STAGE_BALANCE **네임스페이스 import**(wavesData.*/balanceData.*) — wave-balancer #7 미착지 상태에서 링크 에러 0. resolveStageWaves 부재→WAVES 폴백+경고 1회(스테이지당), resolveHpScale 부재→1.0 폴백 |
+| 22-5 | 폴백 경로 독립 검증 | 통과 | 실 버스: 부재 stageId('no_such_stage') 2회 발행→경고 정확히 1회(스팸 방지)+WAVES 폴백, stage:started 없이 game:started(v2 부팅)→total 10·maxHp 기본, 웨이브1 스폰수==그룹 count 합(8) |
+| 22-6 | wave:started.total 소스 (D16) | 통과 | total=activeWaves.length(=10). main의 승리 판정 waveTotal 캐시(회차 21-8)와 정합 — 데이터가 진실, 하드코딩 아님 |
+| 22-7 | combat.enemies 읽기 의존 (§1) | 통과 | export const enemies=[](combat.js:39) live 배열, 클리어 판정 enemies.length===0 읽기(waves.js:142) — §1 허용 방향. combat이 push/length=0로 in-place 변경 |
+| 22-8 | sim.mjs 회귀 (AC-37) | 통과 | `node scripts/sim.mjs` exit 0, 29/29 — 무전략 W6·킬존 잔여 11/20 유지. sim은 game:started만 발행(stage:started 없음)→기본 WAVES·hpScale 1 경로=v2 동작 |
+
+### 회차 22 잔여 (미착지 의존)
+
+- **실 스테이지2~5 HP스케일·웨이브 구성 반영**: STAGE_WAVES/STAGE_BALANCE 데이터(wave-balancer #7) 착지 후 통합 회차(W3-8)에서 검증 — stage:started{stageId:'twin_snake' 등}→다른 웨이브·HP 확인. 현재는 crystal_valley 폴백만 실동작(정상, 데이터 갭).
+- **STAGE_WAVES.crystal_valley===WAVES / STAGE_BALANCE.crystal_valley.hpScale===1.0 회귀 게이트**(§15/AC-41): wave-balancer #7 착지 시 확인 — 참조 동일성·hpScale 1.0이면 스테이지1이 v2와 byte-identical 동작.
+
+---
+
+## [검증 회차 23] 대상: map-designer v3 LEVELS 5스테이지 (Task #6 완료 — levels.js·tilemap.js) — 2026-07-08
+
+기준: 계약 v3.0 §4.5·§4.7·§13·§15/AC-41. **결함 0건.** QA 독립 검증(자체 재계산 — path.js validateLevel 불신) 3하네스 전건 통과: `qa-verify-v3-levels0.mjs`(14)·`qa-verify-v3-all-levels.mjs`(전 5스테이지)·`qa-verify-v3-realload.mjs`(실 grid/path 로드+체비쇼프).
+
+| # | 경계면 | 판정 | 확인 방법 |
+|---|---|---|---|
+| 23-1 | 문법 게이트 | 통과 | levels.js·tilemap.js `node --input-type=module --check` 파스 에러 0 |
+| 23-2 | **LEVELS[0] byte-identity** (W3-3, §15/AC-41) | 통과 | 회차20 준비 하네스: waypoints·tiles·decoTiles·entrance·goal v2(4f7d346) 문자 단위 동일, LEVEL 별칭===LEVELS[0](동일 객체), §13 D11 불변량(waypoints 8점·PATH 28·킬존 A/B/(13,4) GRASS), tint null(스테이지1 원색). 14/14 |
+| 23-3 | **신규 4스테이지 PATH↔waypoints 정합** (W3-4, §4.5) | 통과 | **자체 재계산**(세그먼트 보간으로 통과 타일 집합 산출): 5스테이지 전부 양방향 차집합 0(waypoints 통과==PATH 집합), 축 정렬(대각·중복 세그먼트 0), 입구 col0·도착 col14, entrance==wp[0]·goal==wp[last]. tiles 10×15·도메인 {0,1,2} |
+| 23-4 | 기하 수치 대조 (§4.7) | 통과 | 경로길이 재계산 1728/2560/2752/3584/4480 == map-designer 주장, PATH 28/41/44/57/71, GRASS 113/102/100/89/79 전건 일치 |
+| 23-5 | **난이도 단조성** (§13.1·AC-44 기하 측면) | 통과 | 경로길이 단조 증가(1728<2560<2752<3584<4480), GRASS 밀도 단조 감소(113>102>100>89>79) — 스테이지 1<2<3<4<5 압박 점진. (밸런스 밴드 AC-44는 wave-balancer sim 소관) |
+| 23-6 | **실 모듈 로드** (grid.js·path.js validateLevel) | 통과 | 실 initGrid+initPath 5스테이지 구동 console.error 0(validateLevel 통과), getTotalLength==세그먼트합, positionAt(끝)done=true·positionAt(0)==입구중심, 건설 가능 타일 79~113개(≥40 전략 여지) |
+| 23-7 | decoTiles 스키마·체비쇼프≥2 (D11-E) | 통과 | 전 스테이지 key ∈ deco_* 4종, 항목 tiles=DECO 지시, PATH 충돌 0, DECO∩PATH=∅. **체비쇼프 독립 재계량**: crystal_valley/bramble_fork/twin_snake/narrow_gate 최소 2(외곽 한정), last_ridge decoTiles 0개(밀집 능선 — 제약 무관) |
+| 23-8 | tint 렌더 (§4.7·§11) | 통과 | tilemap.applyTint: null 가드(LEVELS[0] v2 픽셀 동일), 형식 검증(#RRGGBB·alpha 0~0.5)+경고, multiply 블렌드, save/restore, **논리 좌표 COLS×TILE_SIZE**(물리 px 아님 — §11 정합). 5스테이지 tint 형식 전건 유효(alpha 0.12~0.32). 게임플레이 무관(밸런스 회귀 대상 아님) |
+| 23-9 | 계약 외 이벤트/신규 emit | 통과 | levels.js·tilemap.js emit 0(map은 데이터/렌더 — §1 이벤트 미발행). 상대경로 감사 map 포함 0건(회차22 재확인) |
+
+**W3-3(LEVELS[0])·W3-4(신규 스테이지) 해소.** map-designer #6 완결 — 잔여: STAGE_WAVES/STAGE_BALANCE 데이터와 결합한 실 스테이지 밸런스는 wave-balancer #7 검증(회차 24)에서 교차.
+
+---
+
+## [검증 회차 24] 대상: wave-balancer v3 밸런스·점수 (Task #7 — waves.js·balance.js·scoring.js·sim.mjs) — 2026-07-08
+
+기준: 계약 v3.0 §4.8·§4.9·§4.10·§15/AC-41, GDD AC-44. **P2 1건(D24-1 — sim 게이트 exit 1).** 스키마·회귀·점수 배점은 전건 통과, 실엔진 스테이지 밴드만 실패.
+
+### 통과 항목
+
+| # | 경계면 | 판정 | 확인 방법 |
+|---|---|---|---|
+| 24-1 | 문법 게이트 | 통과 | waves.js·balance.js·scoring.js `node --input-type=module --check` 파스 에러 0 |
+| 24-2 | **STAGE_WAVES.crystal_valley===WAVES** (W3-3, §15/AC-41) | 통과 | sim 게이트 참조 동일성 PASS + 5키(crystal_valley/bramble_fork/twin_snake/narrow_gate/last_ridge), 각 길이 10 고정(D16), 전 그룹 enemy∈ENEMIES, 각 스테이지 골렘 W10에만 |
+| 24-3 | **STAGE_BALANCE.crystal_valley={120,20,1.0}** (§15/AC-41) | 통과 | sim PASS: startGold 120·startLives 20·hpScale 1.0(스테이지1 v2 회귀). 5키+필드(startGold/startLives/hpScale≥1), hpScale 1→5 단조 증가(AC-44) |
+| 24-4 | SCORING 배점 (§4.10·§13.2) | 통과 | killPoints ENEMIES 5키 전부·보스 단일 최고, 처치점수 난이도순(goblin 최저·brute 비보스 최고), waveClearBonus>0·waveScale≥1·lifeBonusPerLife>0. score.js는 이 데이터만 읽음(회차21 로직 검증 — 수치 착지로 로직 불변) |
+| 24-5 | 점수 3요소 비중 (§13.2) | 통과 | sim Part5: S1 무피해 2679(처치55%+웨이브23%+라이프22%), 밴드 2409, 완벽도 스윙 +270(11% 재플레이 동기) — 3요소 균형 |
+| 24-6 | 실엔진 S1 회귀 (AC-37) | 통과 | 무전략 W6 실패·킬존 잔여 11/20 — v2 밴드 유지 |
+| 24-7 | 실엔진 S2 bramble_fork | 통과 | 킬존 클리어 잔여 40% (밴드 30~70%) |
+| 24-8 | 난이도 단조 (킬존 잔여%) | 통과(경고) | sim: 55→40→X→X→X 비증가 판정 PASS — 단 X(S3~5 실패)가 포함된 단조성이라 실질 의미는 D24-1 해소 후 재판정 |
+
+### 결함
+
+| # | 심각도 | 경계면 | 증상 | 재현/확인 | 담당 |
+|---|---|---|---|---|---|
+| D24-1 | P2 | 밸런스 게이트 (AC-44·AC-37) | **wave-balancer 자체 게이트 sim.mjs가 exit 1로 실패 중인데 Task #7이 완료 마킹됨** (v2 D16-2 재발 패턴). 실패 3항목: 실엔진 S3 twin_snake·S4 narrow_gate·S5 last_ridge 킬존 봇이 **클리어 자체 실패**("현재 실패"). **의심 지점(QA 근본원인 진단): sim의 킬존 봇 큐 갭 — 밸런스 결함 아닐 수 있음.** `KILLZONE_QUEUES = {crystal_valley: ...}`만 정의(sim.mjs:179), S2~5는 `|| KILLZONE_ACTIONS`(crystal_valley 좌표) 폴백. 그 좌표가 신규 맵에서 **PATH 타일(건설 불가)**: bramble 5개·twin_snake 2개·narrow_gate 4개·last_ridge 6개 충돌(QA 독립 재계산). 봇이 타워를 못 지어 클리어 실패 — **스테이지 기하에 맞는 킬존 큐 부재가 원인**이지 STAGE_WAVES/hpScale 수치 결함이라 단정 불가. S3~5 실 밸런스는 봇이 제대로 플레이해야 판정 가능 | `node scripts/sim.mjs; echo $?` → 1 (45항목 중 3 FAIL, line 80~82) / 좌표 충돌: QA 독립 재계산(crystal 킬존 10좌표 vs LEVELS[n].tiles PATH 대조) | wave-balancer |
+
+### 회차 24 잔여
+
+- **D24-1 해소 트리거**: wave-balancer가 sim.mjs에 스테이지 2~5 킬존 봇 큐(각 맵 GRASS 명당 좌표)를 추가 → 봇이 실기하로 플레이 → 실제 AC-44 밴드 판정. 그 후 (가) sim exit 0이면 밸런스 정상 (나) 여전히 밴드 이탈이면 STAGE_BALANCE(hpScale)·STAGE_WAVES 수치 재튜닝. **W3-8 통합 게이트는 sim exit 0 요구 — D24-1 미해소 시 v3 QA 종결 불가.**
+- 완료 보고는 최종 저장 후 게이트 재실행 기준 권고(v2 D16-2 교훈 — [[verify-gate-after-final-save]]).
+
+---
+
+## [검증 회차 25] 실데이터 재검증 (Wave A 데이터 3종 착지 — team-lead 요청) + D24-1 진척 — 2026-07-08
+
+기준: 계약 v3.0 §4.8·§4.9·§4.10·§15. **실데이터 통합 4항목 중 3 통과, D24-1(sim) P2 유지(성격 변경).** 폴백으로 통과했던 경계면을 실데이터로 재검증(engine #8·entity #11 무회귀 확인).
+
+| # | 경계면 (team-lead 재검증 4점) | 판정 | 확인 방법 |
+|---|---|---|---|
+| 25-1 | LEVELS[0] 불변 + 신규 4개 로드 (점1) | 통과 | 3하네스 재실행 exit 0: qa-verify-v3-levels0(byte-identity 14/14), all-levels(5스테이지 정합·단조), realload(실 grid/path console.error 0). levels.js 회차23 이후 무변경 |
+| 25-2 | **STAGE_WAVES/STAGE_BALANCE ↔ waves hpScale·economy 캐싱 실데이터** (점2) | 통과 | `qa-verify-v3-realdata-integ.mjs` 실 버스 구동: 5스테이지 진입 시 economy 시작자원 == STAGE_BALANCE(전부 120/20), **hpScale 실반영**(첫 적 goblin maxHp 32/34/36/40/44 = base×hpMult×hpScale[1/1.06/1.14/1.24/1.36] 정확), hpScale 단조 비감소. STAGE_WAVES 5키 길이10·crystal_valley===WAVES |
+| 25-3 | **SCORING ↔ score.js 무피해 완주 이론 최고점** (점3, 독립 재확인) | 통과 | QA 독립 이론 계산 vs score.js 실구동 대조: crystal_valley 처치 1463 + 웨이브 612 + 라이프 600 = **2675 완전 일치**. 요소 분해(kill/wave/life) score:finalized 페이로드 정합. wave-balancer 1차 대조와 독립적으로 재확인 |
+| 25-4 | **sim.mjs 스테이지 회귀 5/5 exit 0** (점4) | **미통과 (D24-1 유지)** | `node scripts/sim.mjs` exit 1, 45항목 중 4 FAIL. **아래 D24-1 성격 변경 참조** |
+
+### D24-1 성격 변경 (P2 유지) — 하네스 갭 해소, 순수 밸런스 곡선 문제로 격리
+
+wave-balancer가 회차24 리포트의 **하네스 갭을 수정함**(sim.mjs 13:05): `buildKillzoneQueue(level)`가 각 맵 커버리지 상위 GRASS 12타일을 자동 선정 → 봇이 실기하로 정상 플레이(더 이상 crystal 좌표를 PATH에 배치하지 않음, QA 확인). **원 진단(큐 갭) 해소.** 그러나 sim은 여전히 exit 1 — 이제 **순수 밸런스 곡선 문제**로 분리됨:
+
+| 실패 항목 | 증상 | 데이터 | 신호 |
+|---|---|---|---|
+| S2 bramble_fork | 잔여 95% (밴드 30~70%) — **너무 쉬움** | hpScale 1.06, 총EHP 34k | C누수 W1:1 이후 전부 0 |
+| S4 narrow_gate | W5 패배 (클리어 실패) — **너무 어려움** | hpScale 1.24, 총EHP 53k | 누수 W1:3 W2:2 W3:5 W4:3 |
+| S5 last_ridge | W3 패배 — **크게 어려움** | hpScale 1.36, 총EHP 74k | 누수 W1:7 W2:11 |
+| 난이도 단조 | 킬존 잔여% 55→95→60→X→X (S2가 S1 상회 — 비단조) | | S2 과이지 + S4/5 급락 |
+
+- **결정성 확인**: sim 5회 반복 전부 동일 결과(Math.random 0건) — 안정적 재현. 총EHP 곡선은 단조(30k→34k→43k→53k→74k)이나 실엔진 클리어 결과는 비단조 → **hpScale만으로는 기하 난이도(경로길이·병목)를 상쇄 못함**. narrow_gate(병목·GRASS 89)·last_ridge(최장·GRASS 79)는 봇이 명당을 충분히 확보해도 물량이 방어를 초과.
+- **QA 판정**: 코드/하네스 결함 아님 — STAGE_BALANCE hpScale·STAGE_WAVES 조합의 **수치 재튜닝** 영역(wave-balancer 소관). S2는 압박 상향(hpScale↑ 또는 물량↑), S4/S5는 완화(hpScale↓ 또는 시작자원↑ 또는 물량↓). **W3-8 통합 게이트 sim exit 0 요구 — D24-1 미해소 시 v3 종결 불가.**
+
+### 회차 25 판정: engine #8·entity #11·map #6 실데이터 무회귀 확정. 잔여 = D24-1(밸런스 재튜닝) 단일 블로커.
+
+---
+
+## [검증 회차 26] 대상: ui-dev v3 UI (Task #9 완료 — stageselect/hud/screens + index.html §7 DOM) — 2026-07-08
+
+기준: 계약 v3.0 §3.10·§7·§14. **결함 0건.** QA 독립 UI 헤드리스(`qa-verify-v3-ui.mjs`, 최소 DOM 셰임+실 이벤트 버스, 12단언) 전건 통과. index.html은 architect가 §7 v3 컨테이너 추가(#hud-score·#screen-stage-select).
+
+| # | 경계면 | 판정 | 확인 방법 |
+|---|---|---|---|
+| 26-1 | 문법 게이트 (ui 3파일 + 전 src) | 통과 | stageselect/hud/screens `node --check` + src 36파일 전수 파스 에러 0 |
+| 26-2 | **§7 v3 DOM 계약** (W3-7) | 통과 | index.html: #hud-score·#screen-stage-select 존재(architect 추가). 결과화면 스테이지복귀 버튼 #btn-stages-victory/defeat는 screens.js가 동적 생성(§7 "내부 구성 ui-dev 재량" — 계약 위반 아님). stageselect: .stage-card[data-stage=0..4]·.stage-best·.locked·.cleared 셀렉터 실생성 확인 |
+| 26-3 | **v3 이벤트 emit↔on 최종 diff (7종)** (W3-1 완결) | 통과 | 전 7종 emit·on 양측 존재(고아 0): ui:stage-select-requested(emit 2 screens/ on 2 main·stageselect), ui:stage-selected(emit 2 screens·stageselect/ on 1 main), stage:started(emit 1 main/ on 4 economy·score·waves·screens), score:changed(emit 2 score/ on 1 hud), score:finalized(emit 1 score/ on 2 progress·screens), stage:record-updated(emit 1 progress/ on 2 screens·stageselect), stage:unlocked(emit 1 progress/ on 1 stageselect) |
+| 26-4 | **stageselect ↔ progress 읽기 API** (§1·§14.3) | 통과 | 실 버스 구동: getUnlockedCount/getBestScore/isUnlocked 읽기, 카드 5개 생성·data-stage 0~4, S1(해금) 클릭→ui:stage-selected{stageIndex:0}, S3(잠김) 클릭→무발행(shake만), locked/cleared 클래스 토글, 해금 후 S2 카드 잠금 해제·최고점 "최고 645" 표시. drawMinimap은 LEVELS[i].tiles/tint 읽기(신규 이미지 0 — §5.5) |
+| 26-5 | **screens ↔ score:finalized 페이로드·순서 불변식** (AC-46) | 통과 | renderScorePanel이 score:finalized {kill,wave,life,total} 요소 분해 + stage:record-updated {best,isNewBest} 신기록 표시. **순서 불변식 직접 관측**: game:won emit 스택 내 record→finalized→(screens game:won 후속 핸들러) 순 — score(먼저 등록)→progress 중첩 캐스케이드가 screens 렌더 전 완료(init 순서 initScore 252<initScreens 262 보장). 승리 화면 hidden 해제 |
+| 26-6 | hud ↔ score:changed (AC-45) | 통과 | on('score:changed', {score, delta}) → setScore(score)+delta 부호별 펄스(hud.js:139). game:started에서 setScore(0) 리셋(score.js 동일 트리거) |
+| 26-7 | 격리 (§1 부분 재실행) | 통과 | main safeInit로 stageselect 포함 ui 개별 격리(main.js:263). stageselect는 #screen-stage-select 부재 시 자가 생성(architect 미반영 대비)·progress 읽기 실패에도 카드 렌더 폴백. screens는 finalized 미도달 시 점수판 비우고 안전 강등(renderScorePanel f 가드) |
+| 26-8 | 상대경로 재감사 (전 ui 착지 후) | 통과 | §12 grep 매치 0건 |
+
+**W3-1(이벤트 쌍)·W3-7(DOM+표시) 해소.** ui-dev #9 완결 — v3 헤드리스 경계면 전건 그린.
+
+### v3 QA 현황 (회차 20~26)
+
+| 모듈 | Task | 회차 | 판정 |
+|---|---|---|---|
+| engine-dev (storage/score/progress/economy/main) | #8 | 21 | 통과 |
+| entity-dev (waves 캐싱) | #11 | 22 | 통과 |
+| map-designer (LEVELS 5) | #6 | 23 | 통과 |
+| wave-balancer (STAGE_*/SCORING) | #7 | 24·25 | 스키마·회귀·점수 통과 / **D24-1(P2 sim exit 1) 미해소** |
+| 실데이터 통합 재검증 | — | 25 | 3/4 통과(sim만 D24-1) |
+| ui-dev (stageselect/hud/screens) | #9 | 26 | 통과 |
+
+**v3 유일 블로커: D24-1 (P2, sim.mjs exit 1 — 밸런스 곡선 재튜닝, wave-balancer).** 나머지 전 경계면 헤드리스 그린. D24-1 해소 시 W3-8 통합 게이트(sim exit 0 + AC-38~48 종합) 실행 → v3 QA 종결. 브라우저 스모크(AC-20/상태머신 실도달/모바일)는 playtester 이관.
+
+---
+
+## [검증 회차 27] 통합 배선 재확인 + W3-8 게이트 사전 스테이징 — 2026-07-08
+
+engine-dev main.js initStageSelect 배선·architect index.html §7 DOM·ui-dev 재사용 경로 착지 통지 수신 후 재확인. **결함 0건. D24-1(P2) 유지 — 유일 블로커.**
+
+| # | 항목 | 판정 | 확인 방법 |
+|---|---|---|---|
+| 27-1 | main.js initStageSelect 배선 실재 | 통과 | main.js:63 import + :263 safeInit('ui/stageselect') — 회차26 검증본과 동일(무회귀), `node --check` PASS |
+| 27-2 | index.html §7 v3 DOM 실재 | 통과 | :20 #hud-score, :37 #screen-stage-select(class="screen hidden") — architect 반영. ui-dev 재사용 경로(계약 노드 있으면 getElementById 재사용·중복 0)와 정합 |
+| 27-3 | SCORING 재튜닝 추종 (하드코딩 0 확인) | 통과 | wave-balancer SCORING 조정(waveClearBonus 50→40·waveScale 1.0→1.12·lifeBonusPerLife 25→30). score.js·hud·screens는 데이터 read로 자동 추종 — 하네스 재실행에서 wave index5→59·life 7×30=210·이론 최고점 2675 자동 반영, 코드 무변경(§4.10 매직넘버 금지 준수) |
+| 27-4 | **W3-8 통합 게이트 스테이징** | 통과(게이트 자체) | `_workspace/qa_scratch/qa-v3-gate.sh` 작성 — 문법(36파일)+헤드리스 8하네스+sim+이벤트7종 고아검사+상대경로 5스텝 종합. **드라이런: 3(sim/D24-1) 외 전 스텝 그린.** D24-1 해소 시 이 스크립트 1회로 W3-8 종합 판정 |
+| 27-5 | D24-1 현황 재확인 | 미해소 | sim.mjs exit 1(4 FAIL), balance.js/waves.js mtime 12:5x(회차25 이후 밸런스 재튜닝 미착지). S2 95%·S4/S5 클리어실패·단조성 실패 동일 |
+
+**v3 헤드리스 QA는 D24-1 단일 항목에서만 red.** 나머지 전 경계면(이벤트·스키마·점수·해금·저장·LEVELS 회귀·UI 순서·배선·DOM·상대경로) 그린 확정. wave-balancer 밸런스 재튜닝 착지 시 `bash _workspace/qa_scratch/qa-v3-gate.sh`로 즉시 W3-8 종합 판정 → v3 헤드리스 QA 종결. 브라우저 스모크는 playtester 이관.
+
+---
+
+## [검증 회차 28] W3-8 v3 통합 게이트 — D24-1 종결 + 헤드리스 QA 종결 — 2026-07-08
+
+기준: 계약 v3.0 전체, GDD AC-38~48. **D24-1(P2) 종결. W3-8 통합 게이트 전건 그린. v3 헤드리스 QA 종결.** wave-balancer #7 밸런스 재튜닝 착지 통지 후 자체 보고 불신 원칙으로 독립 재검증.
+
+### D24-1 종결
+
+wave-balancer가 밸런스 곡선 재튜닝 착지(hpScale 1.0/1.10/1.26/1.34/1.42 — S4/S5 완화, S2 상향). **QA 독립 재현**: `node scripts/sim.mjs` **exit 0, 45/45, 5회 반복 완전 동일(결정적)**. 킬존 봇 5스테이지 전부 클리어, 잔여 라이프 밴드:
+
+| 스테이지 | hpScale | 킬존 잔여% | AC-44 밴드(30~70%) |
+|---|---|---|---|
+| S1 crystal_valley | 1.0 | 55% (v2 고정) | ✓ |
+| S2 bramble_fork | 1.10 | 70% | ✓ |
+| S3 twin_snake | 1.26 | 60% | ✓ |
+| S4 narrow_gate | 1.34 | 60% | ✓ |
+| S5 last_ridge | 1.42 | 50% | ✓ |
+
+신규 S2→S5 단조 비증가(70→60→60→50) — AC-44 통과. 회차24·25의 하네스 갭·밸런스 곡선 문제 전부 해소. **완료 보고가 최종 저장 후 게이트 재실행 기준(exit 0)이었음 — v2 D16-2 교훈 반영 확인([[verify-gate-after-final-save]]).**
+
+### W3-8 통합 게이트 (`qa-v3-gate.sh` — 5스텝 종합)
+
+| 스텝 | 항목 | 판정 |
+|---|---|---|
+| 1 | 문법 게이트 (src 36파일 + sim) | ✓ 파스 0 |
+| 2a~2h | 헤드리스 8하네스 (LEVELS0 회귀·5스테이지 정합·실로드·score/storage·해금 캐스케이드·waves 캐싱·실데이터 통합·UI 순서) | ✓ 전건 |
+| 3 | sim.mjs 스테이지 회귀 (AC-37·AC-44) | ✓ exit 0, 45/45 |
+| 4 | v3 이벤트 7종 emit↔on 고아 검사 | ✓ 고아 0 |
+| 5 | 상대경로 감사 (§12) | ✓ 0건 |
+
+**게이트 exit 0.** 실데이터 재확인(재튜닝 반영): hpScale maxHp 32/35/40/43/45 실반영, SCORING(waveClearBonus 40·waveScale 1.12·lifeBonusPerLife 30) score.js 자동 추종(하드코딩 0 — §4.10), STAGE_WAVES.crystal_valley===WAVES·WAVES 원본 라인 무변경(추가만 — §15/AC-41), 이론 최고점 2675 정합.
+
+### AC-38~48 헤드리스 커버리지 매핑
+
+| AC | 항목 | 판정 근거 (회차) |
+|---|---|---|
+| AC-38 | 스테이지 선택 5카드 나열 | 26-2/26-4 (.stage-card 5·이름·잠금·최고점) |
+| AC-39 | 초기 S1만 선택가능·2~5 잠김 | 21-5·26-4 (초기 unlockedCount 1) |
+| AC-40 | N클리어→N+1 해금·재접속 유지 | 21-5·25 (해금+localStorage 저장 왕복) — **실브라우저 재접속은 playtester** |
+| AC-41 | 각 스테이지 경로 상이·S1=crystal_valley 불변 | 23-2·28 (byte-identity·WAVES 무변경) |
+| AC-42 | 진입 시 자원 초기화·독립 한 판 | 25-2 (시작자원 120/20 실반영·이월 없음) |
+| AC-43 | 게임중/결과→스테이지 선택 복귀 | 26-3 (ui:stage-select-requested emit↔on) — **실도달 playtester** |
+| AC-44 | S1→5 난이도 상승 밴드 | 28 (sim 킬존 70/60/60/50 단조·exit 0) |
+| AC-45 | HUD 실시간 점수 | 26-6 (score:changed↔hud) |
+| AC-46 | 결과 화면 점수 분해 | 21-4·26-5 (finalized kill/wave/life 분해) |
+| AC-47 | 신기록 표시·저장·반영 | 21-5·26-5 (isNewBest·record-updated·저장) — **실브라우저 playtester** |
+| AC-48 | localStorage 부재/손상 크래시 없음 | 21-2 (부재/손상/버전불일치 폴백) |
+
+- **헤드리스 원천 달성 8건** (AC-38/39/41/42/44/45/46/48), **실브라우저 국면 잔여 3건** (AC-40 재접속·AC-43 실도달·AC-47 실렌더 — 로직/저장은 헤드리스 확정, 실렌더/영속 왕복만 playtester).
+
+### v3 QA 최종 집계 (회차 20~28)
+
+| 심각도 | 건수 | 상태 |
+|---|---|---|
+| P0 | 0 | — |
+| P1 | 0 | — |
+| P2 | 1 (D24-1) | **종결** (sim exit 0·45/45·결정적, AC-44 밴드 정합) |
+| P3 | 0 | — |
+
+**미결 0건.** v3 헤드리스 QA 종결 — 이벤트 43종 emit↔on 고아 0, 스키마·점수 집계·해금 캐스케이드·저장 폴백·LEVELS[0] 회귀·5스테이지 기하·UI 순서 불변식·상대경로·문법 전건 그린. 재사용 게이트 `_workspace/qa_scratch/qa-v3-gate.sh`. **playtester 이관**: AC-20(브라우저 콘솔 0)·AC-40/47(재접속 영속 실왕복)·AC-43(상태머신 실도달)·AC-34(모바일 세로)·AC-27/29/31(v2 육안) — 브라우저 자동화 환경 필요.

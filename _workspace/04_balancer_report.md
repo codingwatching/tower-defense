@@ -1,9 +1,9 @@
 # 밸런스 리포트 — 크리스탈 가드 (Crystal Guard)
 
-- 작성: wave-balancer / 2026-07-03 (r2 — QA D9-1 실엔진 보정) / 2026-07-06 (**r3 — 게임 v2 메커니즘 수치, §7**)
-- 입력: `_workspace/01_director_gdd.md` (v2.0 — §12.1 의도·구속, AC-37), `_workspace/02_architect_architecture.md` (v2.0 — §4.1-v2 스키마), `td-balance-design` 스킬, `_workspace/05_qa_report.md` 회차 9 (D9-1)
-- 산출물: `src/data/towers.js`, `src/data/enemies.js`, `src/data/waves.js`, `src/data/balance.js`, `scripts/sim.mjs`
-- 검증: `node scripts/sim.mjs` — **29/29 항목 PASS** (실엔진 자동 플레이 + v2 메커니즘 구속 수식). §3~4의 표는 r2 시점 기록이며 v2 최종 수치는 §7이 우선한다
+- 작성: wave-balancer / 2026-07-03 (r2 — QA D9-1 실엔진 보정) / 2026-07-06 (**r3 — 게임 v2 메커니즘 수치, §7**) / 2026-07-08 (**r4 — v3 5스테이지 + 종합 점수, §8**)
+- 입력: `_workspace/01_director_gdd.md` (v3.0 — §13.1 난이도 곡선·§13.2 점수 배점, AC-44), `_workspace/02_architect_architecture.md` (v3.0 — §4.8~4.10 스키마·§15 불변), `td-balance-design` 스킬, map-designer LEVELS(5맵 기하)
+- 산출물: `src/data/towers.js`, `src/data/enemies.js`, `src/data/waves.js`(+STAGE_WAVES), `src/data/balance.js`(+STAGE_BALANCE), `src/data/scoring.js`(신규), `scripts/sim.mjs`
+- 검증: `node scripts/sim.mjs` — **45/45 항목 PASS (exit 0)**. v3 최종 수치는 §8이 우선(§7=v2, §3~4=r2 기록)
 
 ---
 
@@ -175,3 +175,56 @@ sim v2는 실엔진이지만 봇이다. 사람 기준 확인 요청:
 
 - **ui-dev**: `src/ui/shop.js:50`, `src/ui/placement.js:188`이 폐지된 `def.assetKey`(+구 키 `tower_${type}` 폴백)를 읽음 — v2 매니페스트에 해당 키가 없어 상점 아이콘·배치 고스트가 플레이스홀더로 강등된다. `TOWERS[type].assetKeys[0]` (Lv1 키)로 전환 필요. 현재 태스크 목록에 ui-dev v2 항목이 없어 main에 라우팅 요청함.
 - entity-dev tower.js는 `assetKeys[level-1]` + v1 강등 체인까지 정상 구현 확인.
+
+---
+
+## 8. 게임 v3 — 5스테이지 + 종합 점수 (r4, 2026-07-08)
+
+- 입력: GDD v3 §13.1(난이도 곡선)·§13.2(점수 배점), 계약 v3.0 §4.8(STAGE_WAVES)·§4.9(STAGE_BALANCE)·§4.10(SCORING)·§15(불변 경계), map-designer LEVELS(5맵 기하·킬존), entity-dev waves.js(stage:started→hpScale·activeWaves 캐시)
+- 산출물: `src/data/scoring.js`(신규), `src/data/waves.js`(STAGE_WAVES 추가), `src/data/balance.js`(STAGE_BALANCE 추가), `scripts/sim.mjs`(Part 4 스테이지 회귀 + Part 5 점수 배점)
+- 검증: `node scripts/sim.mjs` — **45/45 항목 PASS (exit 0)**
+
+### 8.1 스테이지 1 회귀 불변 (계약 §15)
+
+`STAGE_WAVES.crystal_valley === WAVES`(참조 동일), `STAGE_BALANCE.crystal_valley = {120,20,1.0}`. sim Part 2 실엔진 봇 결과가 v2와 **문자 단위 동일**: A 산개 W6 사망 / B 도배 W8 사망 / **C 킬존 클리어 잔여 11/20 = 55%**. WAVES 배열 원본 라인 무변경(git diff는 STAGE_WAVES 추가분·주석만).
+
+### 8.2 점수 배점 (`src/data/scoring.js`, §13.2 3요소)
+
+| 요소 | 값 | 의도 |
+|---|---|---|
+| killPoints | goblin 5 / wasp 8 / orc 10 / brute 25 / **golem 200** | 처치 저항(EHP·armor·회피) 순 차등. 보스 단일 최고(2위 8배). wasp는 HP<orc지만 고속 회피(frost 강요) 프리미엄으로 goblin↑ |
+| waveClearBonus / waveScale | 40 / **1.12** | 후반 가중 — W1 40 → W10 83.2. 중도 패배도 도달 웨이브만큼 인정 |
+| lifeBonusPerLife | 30 | 무피해(20라) 600 vs 밴드(11라) 330 — 완벽도 스윙 |
+
+스테이지 1 풀클리어 요소 비중: **처치 1463(55%) / 웨이브 616(23%) / 라이프 600(22%)** = 2679점. 세 요소 모두 유의미 비중 → "다르게 잘하는 법" 다수(GDD §13.2 의도). 판매·업그레이드·배속 무영향(§4.10 구속) — score.js가 해당 이벤트 미구독으로 보장(engine-dev).
+
+### 8.3 스테이지 밸런스 (`STAGE_BALANCE` hpScale + `STAGE_WAVES` 물량)
+
+**핵심 발견 (D18-1):** 신규 4개 맵의 기하 난이도는 스테이지 순서와 단조가 아니다. best 큐·hp1.0(단일 적용)·데이터 물량 기준 실엔진 봇 클리어%로 측정 시 twin_snake 기하가 가장 관대(하단 이중 킬존), narrow_gate·last_ridge는 긴 경로(3584·4480px)·좁은 타일로 이미 압박이 크다. 따라서 **① 웨이브 물량을 맵 기하에 맞춰 먼저 조정**(twin ×1.2 증량 / narrow ×0.7 · last ×0.8 감량 — 데이터에 베이크) **② 그 위에 hpScale을 단조 상승**시켜 각 스테이지를 AC-44 밴드에 착지.
+
+| 스테이지 | hpScale | 웨이브 물량 | 킬존 봇 잔여% | 무전략 봇 |
+|---|---|---|---|---|
+| 1 crystal_valley | 1.00 | v2 동일(불변) | **55%** (v2 회귀) | W6 사망 |
+| 2 bramble_fork | 1.10 | 기본 | **70%** | W2 사망 |
+| 3 twin_snake | 1.26 | ×1.2 (관대 기하 상쇄) | **60%** | W2 사망 |
+| 4 narrow_gate | 1.34 | ×0.7 (빡센 병목 상쇄) | **60%** | W3 사망 |
+| 5 last_ridge | 1.42 | ×0.8 (최장 경로 상쇄) | **50%** | W2 사망 |
+
+- 신규 스테이지 2→5 킬존 잔여% **70→60→60→50 단조 비증가**(후반일수록 빡빡 — AC-44). 전 스테이지 30~70% 밴드 내.
+- 스테이지 1(55%)은 v2 회귀-고정 학습 스테이지 — 단일 맵 빡빡 튜닝 결과일 뿐 "bramble보다 어렵다"는 의미 아님. sim 단조 판정은 튜닝 가능한 신규 S2→5에만 적용(스테이지 1은 보고만).
+- startGold/startLives는 5스테이지 전부 120/20 고정(스테이지 1 회귀 + AC-44 공통 분모 + hpScale 주손잡이 원칙).
+
+### 8.4 sim 검증 방법론 (Part 4·5 + 계측 버그 교훈)
+
+- **Part 4**: 각 스테이지를 `stage:started{stageId}` → `game:started`로 실엔진 구동(waves.js가 STAGE_BALANCE.hpScale·STAGE_WAVES를 캐시하는 실게임 경로 그대로). 스테이지별 수작업 킬존 큐(map-designer 문서 킬존 기반, crystal_valley와 동형 조합·업그레이드 리듬)로 "신중한 플레이어 하한" 재현.
+- **자동 커버리지 봇 폐기**: 그리디 집합피복 봇을 시도했으나 맵 기하별 편차가 크고 crystal_valley조차 검증 큐보다 약해(W8 사망) 하한을 대표하지 못함 → 수작업 큐 채택.
+- **계측 버그 교훈**: 초기 튜닝 하네스가 hpScale을 웨이브 데이터에 곱한 뒤 waves.js가 STAGE_BALANCE.hpScale로 **한 번 더** 곱해 이중 적용 → HP가 부풀려진 잘못된 곡선으로 튜닝. 실게임 경로(STAGE_BALANCE만 변경)로 재측정해 교정. **최종 수치는 실게임 단일-적용 경로로 검증됨.**
+
+### 8.5 남은 확인 사항 (playtester)
+
+봇은 하한이다 — 사람은 판매/재배치/타이밍으로 상방 여지가 있어 체감이 봇보다 쉬울 수 있다.
+1. **스테이지별 체감 순서**: 봇 기준 2→5 난이도 상승이 사람에게도 그렇게 읽히는가. 특히 narrow_gate(병목 좌절감)와 last_ridge(긴 판 지루함)의 체감.
+2. **twin_snake 물량 ×1.2**: 관대한 기하를 물량으로 상쇄했으나, 사람이 하단 이중 킬존을 완벽히 쓰면 너무 쉬울 수 있음 → 그 경우 hpScale 1.26→1.30.
+3. **last_ridge 50%**: 밴드 하한 근접 — 사람도 빡빡하면 물량 ×0.8→0.85 또는 hpScale 1.42→1.38로 완화.
+4. 점수 체감: 무피해 클리어(+11% 스윙)가 재플레이 동기로 충분한지, 스테이지 간 점수 스케일이 자연스러운지.
+체감이 시뮬과 어긋나면 시뮬(봇 큐)을 먼저 의심한다. 문의: wave-balancer.

@@ -9,6 +9,11 @@
  * - 길: tiles의 PATH 인접 관계로 직선 h/v·코너 ne/nw/se/sw 판별. 판별 불가 시 무방향
  *   tile_path 폴백. 좌우 필드 밖은 열림 취급 (입구·도착이 가장자리 너머로 이어지는 연출)
  * - 장식: LEVEL.decoTiles의 key로 렌더, 목록에 없는 DECO는 deco_rock (v1 하위 호환)
+ *
+ * v3 (계약 §4.7 — 스테이지 테마):
+ * - tint: level.tint({color, alpha})가 있으면 완성된 배경 캐시 위에 색을 곱(multiply)해
+ *   전역 시간대(대낮→오후→저녁→밤)를 연출. 게임플레이 무관(순수 시각).
+ *   tint null·미기입이면 무적용 → LEVELS[0](crystal_valley, tint:null)은 v2와 픽셀 동일.
  */
 
 import { get } from '../core/assets.js';
@@ -160,6 +165,30 @@ export function buildBackground(level) {
     goalPx.x - OBJECT_SIZE / 2, goalPx.y - OBJECT_SIZE / 2,
     OBJECT_SIZE, OBJECT_SIZE
   );
+
+  applyTint(ctx, level.tint);
+}
+
+/**
+ * (v3 §4.7) 스테이지 색 틴트를 배경 캐시 전면에 곱연산으로 1회 오버레이.
+ * multiply 블렌드는 밝은 잔디는 살짝, 어두운 길은 강하게 어둡혀 시간대 인상을 만든다.
+ * 잘못된 데이터(alpha 범위 밖·색 형식 오류)는 조용히 넘기지 않고 콘솔 경고.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {{color: string, alpha: number} | null | undefined} tint
+ */
+function applyTint(ctx, tint) {
+  if (!tint) return; // null·미기입 = 오버레이 없음 (스테이지 1 원색)
+  const { color, alpha } = tint;
+  if (typeof color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(color) || typeof alpha !== 'number' || alpha < 0 || alpha > 0.5) {
+    console.warn(`[map/tilemap] LEVEL.tint 형식 오류 (color '${color}', alpha ${alpha}) — 오버레이 생략. §4.7: {color:'#RRGGBB', alpha:0~0.5}`);
+    return;
+  }
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, COLS * TILE_SIZE, ROWS * TILE_SIZE);
+  ctx.restore();
 }
 
 /**
