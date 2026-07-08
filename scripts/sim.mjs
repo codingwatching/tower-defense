@@ -568,7 +568,8 @@ function stageFullClearScore(stageId, livesLeft, goldLeft = 0) {
   let kill = 0;
   for (const w of waveList) for (const g of w.groups) kill += (SCORING.killPoints[g.enemy] || 0) * g.count;
   let wave = 0;
-  waveList.forEach((_, i) => { wave += Math.round(SCORING.waveClearBonus * (1 + i * (SCORING.waveScale - 1))); });
+  // score.js §4.10과 동일 — 웨이브별 floor 후 합 (round 아님. D32-1: sim이 정본 score.js를 따른다)
+  waveList.forEach((_, i) => { wave += Math.max(0, Math.floor(SCORING.waveClearBonus * (1 + i * (SCORING.waveScale - 1)))); });
   const life = livesLeft * SCORING.lifeBonusPerLife;
   const gold = Math.floor(goldLeft * (SCORING.goldBonusPer || 0));
   return { kill, wave, life, gold, total: kill + wave + life + gold };
