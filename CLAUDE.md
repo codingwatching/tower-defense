@@ -18,3 +18,4 @@
 | 2026-07-06 | 역할 보강 (시트 제작/아틀라스 로더·DPR/터치 UX/맵 비주얼) | agents/{asset-artist,engine-dev,ui-dev,map-designer} | v2 업그레이드 지원 |
 | 2026-07-06 | 재실행 시 에이전트 재사용 원칙 추가 (SendMessage 재개 우선, 이름 충돌 대응) | skills/td-orchestrator | v2 실행 중 -2 접미사 중복 스폰으로 태스크 중복 실행·라우팅 혼선 발생 |
 | 2026-07-06 | 모델 정책 fable→opus 전환 | 전체 (에이전트 12 + 오케스트레이터 + CLAUDE.md) | 환경에서 fable 모델(claude-fable-5) 접근 불가 (API 400) |
+| 2026-07-08 | 스테이지 확장(다중 레벨)·점수 시스템 라우팅 추가 | skills/td-orchestrator | 5단계 스테이지 + 종합 점수/최고기록 요구 |
