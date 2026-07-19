@@ -47,7 +47,7 @@ import { MANIFEST } from '../assets/manifest.js';
 
 import { initGrid } from './map/grid.js';
 import { initPath } from './map/path.js';
-import { buildBackground, drawBackground } from './map/tilemap.js';
+import { buildBackground, drawBackground, drawTerrainAnim } from './map/tilemap.js';
 
 import { initEconomy, getGold, getLives } from './systems/economy.js';
 import { initCombat, updateCombat, drawEntities, towers, enemies, projectiles, zones } from './systems/combat.js';
@@ -65,6 +65,7 @@ import { initStageSelect } from './ui/stageselect.js';
 import { initParticles, updateParticles, drawParticles } from './fx/particles.js';
 import { initFloaters, updateFloaters, drawFloaters } from './fx/floaters.js';
 import { initFlashes, updateFlashes, drawFlashes } from './fx/flashes.js';
+import { initWaterGlint, drawWaterGlint } from './fx/glint.js'; // (v4 §16.3) 물 글린트 — 레이어 15 공동 등록
 
 import { initSound } from './audio/sound.js';
 
@@ -265,10 +266,13 @@ async function bootstrap() {
   safeInit('fx/particles', initParticles);
   safeInit('fx/floaters', initFloaters);
   safeInit('fx/flashes', initFlashes);
+  safeInit('fx/glint', initWaterGlint); // (v4 §16.3) 물 글린트 stage:started 구독
   safeInit('audio/sound', initSound);
 
-  // 렌더 레이어 (계약 §8) — 동일 order는 등록 순서대로 호출됨
+  // 렌더 레이어 (계약 §8·§16.3) — 동일 order는 등록 순서대로 호출됨
   registerLayer(10, drawBackground);
+  registerLayer(15, drawTerrainAnim); // (v4 §16.3) terrain-anim: goal_crystal_anim(전 5맵) + animDecos — 배경 캐시 제외분 애니 draw
+  registerLayer(15, drawWaterGlint);  // (v4 §16.3) 물 글린트 — 지형 애니 '다음'에 등록해 물 표면 위에 올라감(등록 순서대로 호출)
   registerLayer(20, drawEntities);
   registerLayer(30, drawParticles);
   registerLayer(30, drawFloaters);

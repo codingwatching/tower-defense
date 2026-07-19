@@ -14,18 +14,32 @@
  *   overcharge  — 피해 = damage × (1 + min(idle/chargeTime, 1) × maxBonus),
  *                  idle = 마지막 발사 후 경과 시간 (AC-26)
  *   burning_ground / frost_nova — 발사 스펙에 mechanism을 실어 combat이 착탄 시 해석.
+ *
+ * v4 (§16.2·§16.6):
+ * - draw는 getAnim으로 전환 — idle 루프 + 발사 시 attack one-shot 후 idle 복귀.
+ *   상태는 순수 타이머(animClock 누적 + 발사 시 attackStart 마커)로만 update에서 갱신하고,
+ *   getAnim/fps·프레임수 조회는 draw가 전유한다(§10 update/draw 분리). headless sim은 draw를
+ *   부르지 않으므로 update 경로의 로더 호출은 금지 — 위반 시 makePlaceholder에서 크래시(D35-1).
+ *   개체별 위상 랜덤 오프셋(animPhase)으로 같은 타워 다수의 동기 맥동 방지.
+ * - 진화 변신: upgrade() 순간 크로스페이드(구 레벨 idle 0프레임 ↔ 신 레벨 시퀀스, EVOLVE_DURATION)
+ *   + 스케일 펀치(1.0→1.15→1.0). 전투 수치는 즉시 신규 레벨 — 연출은 시각 전용(AC-54).
+ * - 발사 시 projectile 스펙에 towerType 실기(§16.5) — combat이 projectile:hit 페이로드로 전달.
  */
 
 import { TOWERS } from '../data/towers.js';
 import { BALANCE } from '../data/balance.js';
 import { gridToPx } from '../map/grid.js';
-import { get } from '../core/assets.js';
+import { getAnim } from '../core/assets.js';
 import { Projectile } from './projectile.js';
 
 // 표시용 상수 (밸런스 수치 아님)
 const TOWER_DRAW_SIZE = 64;
 const PIP_RADIUS = 3;
 const PIP_SPACING = 9;
+
+// v4 진화 변신 연출 상수 (§16.6 — 밸런스 수치 아님. playtester 피드백에 즉시 조정 가능하도록 모듈 상단 격리)
+const EVOLVE_DURATION = 0.4;    // 구/신 스프라이트 크로스페이드·스케일 펀치 지속 (초)
+const EVOLVE_SCALE_PEAK = 1.15; // 스케일 펀치 정점 배율 (1.0 → 1.15 → 1.0)
 
 const MAX_LEVEL = 3;
 
@@ -89,6 +103,24 @@ export class Tower {
     /** rapid_volley: 연속 명중 스택·추적 대상 id — combat이 notifyHit/notifyEnemyKilled로 갱신. */
     this.volleyStacks = 0;
     this.volleyTargetId = null;
+
+    // v4 애니메이션 상태 머신 (§16.2·§16.6) — 상태(타이머)는 update에서만 갱신하되,
+    //   getAnim은 draw 전유(§10 update/draw 분리)로 둔다. headless sim은 update만 돌리므로
+    //   update 경로에서 로더를 부르면 크래시한다(D35-1). 따라서 update는 순수 타이머만 굴리고,
+    //   fps·프레임수가 필요한 시퀀스 판정은 draw가 아틀라스에서 읽어 파생한다.
+    /** 연속 애니 타이머(초) — 매 스텝 누적. idle 루프·attack 경과 계산의 단일 기준. */
+    this.animClock = 0;
+    /** 마지막 발사 시점의 animClock — attack one-shot 시작 마커(재발사 시 갱신 = 처음부터).
+     *  큰 음수 초기값 = 발사 이력 없음 → 항상 idle. */
+    this.attackStart = -1e9;
+    /** idle 위상 랜덤 오프셋(초) — 같은 타워 다수가 동기 맥동하지 않도록 디싱크 (§10). */
+    this.animPhase = Math.random() * 1000;
+
+    // v4 진화 변신 연출 (§16.6) — upgrade()가 트리거, draw가 크로스페이드·스케일 펀치를 그린다.
+    /** >0이면 진화 연출 진행 중 (초, update에서 감소). */
+    this.evolveTimer = 0;
+    /** 크로스페이드로 페이드아웃할 구 레벨 (0 = 연출 없음). */
+    this.evolvePrevLevel = 0;
   }
 
   /** @returns {{cost:number, damage:number, range:number, cooldown:number}} 현재 레벨 수치 (+선택 오버라이드 필드) */
@@ -130,6 +162,10 @@ export class Tower {
   upgrade() {
     if (this.level >= MAX_LEVEL) return;
     this.invested += this.def.levels[this.level].cost;
+    // v4 진화 연출 트리거 (§16.6) — 구 레벨 캡처 후 타이머 시작.
+    // 전투 수치는 아래 level+1로 즉시 신규 레벨 반영(연출은 시각 전용, 게임플레이 무지연 — AC-54).
+    this.evolvePrevLevel = this.level;
+    this.evolveTimer = EVOLVE_DURATION;
     this.level += 1;
   }
 
@@ -167,6 +203,11 @@ export class Tower {
    * @returns {import('./projectile.js').Projectile | null} 발사 시 투사체, 아니면 null
    */
   update(dt, enemies) {
+    // v4 애니메이션·진화 상태 진행 — 모든 조기 반환 이전(매 스텝 보장, §16.2·§16.6).
+    // 순수 타이머만 갱신 — getAnim 미호출로 headless sim 안전(D35-1). 프레임 판정은 draw 몫.
+    this.animClock += dt;
+    if (this.evolveTimer > 0) this.evolveTimer = Math.max(0, this.evolveTimer - dt);
+
     this.idleTime += dt;
     this.cooldownTimer = Math.max(0, this.cooldownTimer - dt);
     if (this.cooldownTimer > 0) return null;
@@ -213,6 +254,7 @@ export class Tower {
         slow: this.slow,
         damage: effectiveDamage,
         damageType: this.def.damageType,
+        towerType: this.type, // v4 §16.5 — projectile:hit.towerType 발원. combat이 페이로드로 전달
         mechanism: mech, // null = 메커니즘 없음. 착탄 해석은 combat
       },
       this.x,
@@ -220,28 +262,41 @@ export class Tower {
       target
     );
     proj.sourceTower = this; // rapid_volley 명중 통지용 역참조 (내부 필드 — 비계약)
+    this.attackStart = this.animClock; // 발사 순간 attack one-shot 시작 마커 (재발사 시 처음부터 — §16.2)
     return proj;
   }
 
   /**
-   * 레벨별 실스프라이트(assetKeys[level-1] — AC-27) + 레벨 핍 배지(보조 표기).
-   * 데이터가 아직 v1(assetKeys 부재)이면 v1 assetKey로 강등. 상태 변경 금지.
+   * (v4 §16.2·§16.6) 상태 머신 스프라이트 draw — getAnim으로 idle 루프/attack one-shot 프레임 크롭.
+   * 시퀀스 판정(attack 경과 vs idle 복귀)은 animClock/attackStart를 **읽어** 여기서 파생한다 —
+   * draw는 상태를 바꾸지 않고, getAnim은 draw 전유(§10 update/draw 분리). headless sim은 draw를
+   * 부르지 않으므로 로더가 update 핫패스에서 크래시하지 않는다(D35-1 회귀 방지).
+   * 진화 연출 중이면 구 레벨 idle 0프레임 ↔ 신 레벨 시퀀스 크로스페이드 + 스케일 펀치.
    * @param {CanvasRenderingContext2D} ctx
    */
   draw(ctx) {
-    const key = this.def.assetKeys
-      ? this.def.assetKeys[this.level - 1]
-      : this.def.assetKey;
-    const img = get(key);
-    ctx.drawImage(
-      img,
-      this.x - TOWER_DRAW_SIZE / 2,
-      this.y - TOWER_DRAW_SIZE / 2,
-      TOWER_DRAW_SIZE,
-      TOWER_DRAW_SIZE
-    );
+    const evolving = this.evolveTimer > 0 && this.evolvePrevLevel > 0;
+    // 연출 진행도 0→1. 스케일 펀치는 sin(πt)로 t=0.5에서 정점 → 1.0 → 1.15 → 1.0.
+    const t = evolving ? 1 - this.evolveTimer / EVOLVE_DURATION : 1;
+    const scale = evolving ? 1 + (EVOLVE_SCALE_PEAK - 1) * Math.sin(t * Math.PI) : 1;
+    const size = TOWER_DRAW_SIZE * scale;
 
-    // 레벨 배지: 타일 하단 중앙에 금색 핍 level개
+    // 신 스프라이트 = 현재 레벨의 상태 머신 프레임(idle 루프 / attack one-shot).
+    const cur = this._frameOf(this.level, false);
+    if (evolving) {
+      // 구 스프라이트 = 이전 레벨 idle 0프레임(정적) — 페이드아웃, 신 스프라이트 페이드인 (§16.6).
+      const prev = this._frameOf(this.evolvePrevLevel, true);
+      ctx.save();
+      ctx.globalAlpha = 1 - t;
+      this._blit(ctx, prev, size);
+      ctx.globalAlpha = t;
+      this._blit(ctx, cur, size);
+      ctx.restore();
+    } else {
+      this._blit(ctx, cur, size);
+    }
+
+    // 레벨 배지: 타일 하단 중앙에 금색 핍 level개 (스케일 펀치 비적용 — 가독성 유지)
     const pipY = this.y + TOWER_DRAW_SIZE / 2 - PIP_RADIUS - 2;
     const startX = this.x - ((this.level - 1) * PIP_SPACING) / 2;
     for (let i = 0; i < this.level; i++) {
@@ -253,5 +308,58 @@ export class Tower {
       ctx.strokeStyle = 'rgba(0,0,0,0.55)';
       ctx.stroke();
     }
+  }
+
+  /**
+   * 현재/지정 레벨의 애니 키. assetKeys[level-1](v2+), v1 데이터(assetKeys 부재)는 assetKey로 강등.
+   * @param {number} level - 1~3
+   * @returns {string} getAnim 키
+   */
+  _animKey(level) {
+    return this.def.assetKeys ? this.def.assetKeys[level - 1] : this.def.assetKey;
+  }
+
+  /**
+   * 표시 프레임 → 소스 시트 크롭 정보. **오직 draw 경로에서만 호출**(getAnim 전유, D35-1).
+   * - idle0=false: 상태 머신. 발사 후 경과(animClock-attackStart)×fps < attack 프레임수면
+   *   attack one-shot(마지막 프레임 클램프), 초과하면 idle 루프(animClock+위상 오프셋 디싱크).
+   *   재생속도=아틀라스 fps(쿨다운 무관, §16.2). 재발사 시 attackStart 갱신 = one-shot 처음부터.
+   * - idle0=true: idle 0프레임 고정(진화 크로스페이드의 구 레벨 스프라이트용).
+   * 시퀀스 폴백(§16.2): 요청 시퀀스 부재 시 첫 시퀀스로 강등 — 아틀라스 강등에도 안전(AC-59).
+   * @param {number} level @param {boolean} idle0
+   * @returns {{image: CanvasImageSource, frameW:number, frameH:number, sx:number, sy:number}}
+   */
+  _frameOf(level, idle0) {
+    const { image, atlas } = getAnim(this._animKey(level));
+    const idleSeq = atlas.sequences.idle ?? Object.values(atlas.sequences)[0] ?? [0];
+    let frame;
+    if (idle0) {
+      frame = idleSeq[0] ?? 0;
+    } else {
+      const attackSeq = atlas.sequences.attack ?? idleSeq;
+      const attackT = (this.animClock - this.attackStart) * atlas.fps; // 발사 후 경과 프레임 수
+      if (attackT < attackSeq.length) {
+        frame = attackSeq[Math.min(Math.floor(attackT), attackSeq.length - 1)] ?? 0; // one-shot 클램프
+      } else {
+        frame = idleSeq[Math.floor((this.animClock + this.animPhase) * atlas.fps) % idleSeq.length] ?? 0; // idle 루프+위상
+      }
+    }
+    const imgW = image.naturalWidth || image.width || atlas.frameW;
+    const cols = Math.max(1, Math.floor(imgW / atlas.frameW)); // 시트 열 수(2행×4열 → 4)
+    return {
+      image,
+      frameW: atlas.frameW,
+      frameH: atlas.frameH,
+      sx: (frame % cols) * atlas.frameW,
+      sy: Math.floor(frame / cols) * atlas.frameH,
+    };
+  }
+
+  /** 크롭 프레임을 타워 중심에 size×size로 그림 (진화 스케일 펀치 반영). */
+  _blit(ctx, f, size) {
+    ctx.drawImage(
+      f.image, f.sx, f.sy, f.frameW, f.frameH,
+      this.x - size / 2, this.y - size / 2, size, size
+    );
   }
 }

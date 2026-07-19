@@ -7,6 +7,10 @@
 
   # 타워 레벨 시트 → 개별 파일 3개
   python3 slice_sheet.py sheet.png --cols 3 --split "tower_arrow_lv{i}.png" --frame-size 128
+
+  # 멀티 시퀀스 시트 (2행×4열: 0행=idle, 1행=attack) → 8프레임 스트립 + 시퀀스 아틀라스
+  python3 slice_sheet.py sheet.png --cols 4 --rows 2 --out tower.png --atlas tower.json \
+      --sequences "idle:0-3,attack:4-7" --frame-size 128 --fps 8
 """
 import argparse, json, os, sys
 
@@ -53,6 +57,9 @@ def main():
     p.add_argument("--pad", type=float, default=0.06, help="프레임 내 여백 비율")
     p.add_argument("--normalize", action="store_true",
                    help="프레임별 스케일을 개별 정규화(크기 편차 보정). 기본은 시트 전체 공통 스케일")
+    p.add_argument("--sequences",
+                   help='아틀라스 시퀀스 정의: "이름:시작-끝[,이름:시작-끝...]" (프레임 인덱스 0부터, '
+                        '행 우선 순서). 예: "idle:0-3,attack:4-7". 미지정 시 전 프레임 walk')
     a = p.parse_args()
     if not a.out and not a.split:
         sys.exit("--out 또는 --split 중 하나는 필수")
@@ -104,8 +111,21 @@ def main():
         strip.save(a.out)
         print(a.out)
     if a.atlas:
+        if a.sequences:
+            seqs = {}
+            for part in a.sequences.split(","):
+                name, _, rng = part.strip().partition(":")
+                if not name or not rng:
+                    sys.exit(f"--sequences 형식 오류: '{part}' (이름:시작-끝 필요)")
+                s, _, e = rng.partition("-")
+                lo, hi = int(s), int(e) if e else int(s)
+                if not (0 <= lo <= hi < len(frames)):
+                    sys.exit(f"--sequences 범위 초과: '{part}' (프레임 0~{len(frames)-1})")
+                seqs[name] = list(range(lo, hi + 1))
+        else:
+            seqs = {"walk": list(range(len(frames)))}
         atlas = {"frameW": fs, "frameH": fs, "frames": len(frames), "fps": a.fps,
-                 "sequences": {"walk": list(range(len(frames)))}}
+                 "sequences": seqs}
         os.makedirs(os.path.dirname(a.atlas) or ".", exist_ok=True)
         with open(a.atlas, "w") as fp:
             json.dump(atlas, fp, indent=2)

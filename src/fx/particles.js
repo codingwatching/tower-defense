@@ -7,10 +7,13 @@
  * 톤: 밝고 과장된 카툰, 0.2~0.5초 (GDD §8).
  *
  * 구독만 (읽기 API 금지 — 이 모듈 삭제 시에도 게임 동작, 계약 §1·§3):
- *   projectile:hit {target, damage, x, y, splashRadius}
+ *   projectile:hit {target, damage, x, y, splashRadius, towerType}
+ *     (v4 §16.5) towerType('arrow'|'cannon'|'frost'|'arcane', 선택) → 타입별 시그니처 명중 이펙트
+ *     분기. 부재(구 페이로드)면 기존 범용(hitSpark/explosion)으로 폴백 — AC-53.
  *   enemy:killed {enemy, reward, x, y} / enemy:escaped {enemy, livesCost}
  *   enemy:slowed {enemy, factor, duration}
  *   tower:placed {tower, cost} / tower:upgraded {tower, cost}
+ *     (v4 §16.6) tower:upgraded → 진화 광기둥+글로우(+기존 상승 반짝임). 화면 셰이크 금지(AC-54).
  *   tower:fired {towerType, x, y, target} / game:started {} (전체 클리어)
  *   (v2 §3.9) zone:created {zone, x, y, radius, duration, kind} — 화염 지대 점화+지속 불꽃.
  *             바닥 원은 entities/zone.draw 소관(레이어 20), 여기는 그 위 불꽃만.
@@ -57,6 +60,17 @@ const NOVA = {
   shards: 14, shardSpeedMin: 90, shardSpeedMax: 220, shardLife: 0.4,
   sparkles: 8, sparkleLifeMin: 0.3, sparkleLifeMax: 0.55,          // 반경 내 지면 서리 반짝임
 };
+// (v4 §16.5) 타워 시그니처 명중 이펙트 — projectile:hit.towerType별 차별화.
+// 도형+그라디언트+다층 글로우+additive만 (이미지 에셋 의존 0). 발사 빈도가 높은 arrow는 가장 절제.
+const SIG = {
+  frost:  { ringR: 30, ringLife: 0.34, shards: 5, glowR: 22, glowLife: 0.28 },
+  arcane: { rays: 7, raySpeedMin: 180, raySpeedMax: 320, rayLife: 0.30, glowR: 28, glowLife: 0.34, coreR: 10, coreLife: 0.22 },
+  cannon: { ringR: 40, ringLife: 0.30, debris: 5, glowR: 30, glowLife: 0.26 },
+  arrow:  { sparks: 4, speedMin: 120, speedMax: 240, life: 0.20, glowR: 9, glowLife: 0.16 },
+};
+// (v4 §16.6) 진화 광기둥 — tower:upgraded. 화면 셰이크 금지(AC-54, 잦은 이벤트).
+// life는 entity 크로스페이드(≈0.4s)를 감싸도록 여유(0.5s) — 변신 순간을 놓치지 않게 협연.
+const PILLAR = { life: 0.5, h0: 60, h1: 135, width: 26, color: '255,225,140', glowR: 46, glowLife: 0.4, glowColor: '255,220,150' };
 
 // 사망 팝 색 (적 타입별, [r,g,b])
 const DEATH_COLORS = {
@@ -286,6 +300,91 @@ function frostNova(x, y, radius) {
   }
 }
 
+// ─── (v4 §16.5) 타워 시그니처 명중 이펙트 — 타입별 도형+그라디언트+다층 글로우 ───
+// frost=노바 링(팽창 원+서리 파편+청색 글로우) — 서리 톤, 지면 향해 파편이 떨어짐.
+function frostHitSig(x, y) {
+  const c = SIG.frost;
+  const ring = spawn();
+  ring.shape = 'ring'; ring.additive = true; ring.x = x; ring.y = y;
+  ring.life = ring.maxLife = c.ringLife;
+  ring.size0 = c.ringR * 0.3; ring.size1 = c.ringR; // k:1→0 = 시작 반경→끝 반경(팽창)
+  ring.alpha = 0.9; ring.color = 'rgb(170,225,255)';
+  burst(x, y, c.shards, { speedMin: 60, speedMax: 150, life: 0.32 }, (p) => {
+    p.shape = 'shard'; p.drag = 2.2; p.gravity = 140; p.size0 = rand(2, 3.5);
+    p.color = Math.random() < 0.5 ? 'rgb(200,240,255)' : 'rgb(140,205,255)';
+  });
+  const glow = spawn();
+  glow.shape = 'glow'; glow.additive = true; glow.x = x; glow.y = y;
+  glow.life = glow.maxLife = c.glowLife;
+  glow.size0 = c.glowR; glow.size1 = 4; glow.alpha = 0.8; glow.color = '150,220,255';
+}
+
+// arcane=버스트(방사 광선 ray + 왜곡 글로우 + 밝은 코어) — 보랏빛, 사방으로 뻗는 마법 방출.
+function arcaneHitSig(x, y) {
+  const c = SIG.arcane;
+  const n = Math.max(3, Math.round(c.rays * DENSITY));
+  for (let i = 0; i < n; i++) {
+    const ang = (i / n) * Math.PI * 2 + rand(-0.15, 0.15);
+    const spd = rand(c.raySpeedMin, c.raySpeedMax);
+    const p = spawn();
+    p.shape = 'ray'; p.additive = true; p.x = x; p.y = y;
+    p.vx = Math.cos(ang) * spd; p.vy = Math.sin(ang) * spd; p.drag = 3.5;
+    p.life = p.maxLife = c.rayLife * rand(0.8, 1.1);
+    p.size0 = rand(2.5, 4); p.size1 = 0.5; p.color = '200,120,255';
+  }
+  const glow = spawn(); // 왜곡 글로우 — 넓고 은은
+  glow.shape = 'glow'; glow.additive = true; glow.x = x; glow.y = y;
+  glow.life = glow.maxLife = c.glowLife;
+  glow.size0 = c.glowR; glow.size1 = 8; glow.alpha = 0.7; glow.color = '190,110,255';
+  const core = spawn(); // 밝은 코어 플래시
+  core.shape = 'glow'; core.additive = true; core.x = x; core.y = y;
+  core.life = core.maxLife = c.coreLife;
+  core.size0 = c.coreR; core.size1 = 2; core.alpha = 0.9; core.color = '235,205,255';
+}
+
+// cannon=충격파(크리스프 링 + 흙먼지 파편 + 착탄 글로우) — explosion(스플래시) 위에 레이어.
+function cannonHitSig(x, y) {
+  const c = SIG.cannon;
+  const ring = spawn();
+  ring.shape = 'ring'; ring.additive = true; ring.x = x; ring.y = y;
+  ring.life = ring.maxLife = c.ringLife;
+  ring.size0 = 6; ring.size1 = c.ringR; ring.alpha = 0.85; ring.color = 'rgb(255,210,140)';
+  burst(x, y, c.debris, { speedMin: 70, speedMax: 170, life: 0.4 }, (p) => {
+    p.shape = 'shard'; p.additive = false; p.drag = 2; p.gravity = 260; p.size0 = rand(2.5, 4.5);
+    p.color = Math.random() < 0.5 ? 'rgb(150,120,85)' : 'rgb(110,88,62)';
+  });
+  const glow = spawn();
+  glow.shape = 'glow'; glow.additive = true; glow.x = x; glow.y = y;
+  glow.life = glow.maxLife = c.glowLife;
+  glow.size0 = c.glowR; glow.size1 = 6; glow.alpha = 0.85; glow.color = '255,190,110';
+}
+
+// arrow=경량 트레이서 스파크 — 가장 절제(공속 높음). 날카로운 황백색 스파크 + 작은 코어.
+function arrowHitSig(x, y) {
+  const c = SIG.arrow;
+  burst(x, y, c.sparks, { speedMin: c.speedMin, speedMax: c.speedMax, life: c.life }, (p) => {
+    p.shape = 'spark'; p.drag = 5; p.size0 = rand(1.5, 2.5); p.color = 'rgb(255,240,190)';
+  });
+  const glow = spawn();
+  glow.shape = 'glow'; glow.additive = true; glow.x = x; glow.y = y;
+  glow.life = glow.maxLife = c.glowLife;
+  glow.size0 = c.glowR; glow.size1 = 1; glow.alpha = 0.8; glow.color = '255,240,190';
+}
+
+// (v4 §16.6) 진화 광기둥 — tower:upgraded. 수직 그라디언트 빔이 솟아오르며 페이드 + 바닥 글로우.
+// 상승 파티클은 기존 upgradeSparkle이 담당(협연). 화면 셰이크 없음.
+function evolutionPillar(x, y) {
+  const pil = spawn();
+  pil.shape = 'pillar'; pil.additive = true; pil.x = x; pil.y = y;
+  pil.life = pil.maxLife = PILLAR.life;
+  pil.size0 = PILLAR.h0; pil.size1 = PILLAR.h1; // k:1→0 = h0(짧게 시작)→h1(솟아오름)
+  pil.alpha = 0.85; pil.color = PILLAR.color;
+  const glow = spawn();
+  glow.shape = 'glow'; glow.additive = true; glow.x = x; glow.y = y;
+  glow.life = glow.maxLife = PILLAR.glowLife;
+  glow.size0 = PILLAR.glowR; glow.size1 = 10; glow.alpha = 0.9; glow.color = PILLAR.glowColor;
+}
+
 // ─── 투사체 트레일 (가상 트레이서 — 실 투사체 상태를 읽지 않는 이벤트 전용 근사) ───
 function spawnTracer(x, y, target, type) {
   const t = tracers[tracerHead];
@@ -335,10 +434,18 @@ function clearAll() {
 
 /** 구독 등록. main이 1회 호출. */
 export function initParticles() {
-  on('projectile:hit', guard(({ target, x, y, splashRadius }) => {
+  on('projectile:hit', guard(({ target, x, y, splashRadius, towerType }) => {
     if (!Number.isFinite(x)) return;
+    // 스플래시는 타입 무관 메커닉(캐논 등) — 유지. cannonHitSig는 그 위에 충격파를 레이어.
     if (splashRadius > 0) explosion(x, y, splashRadius);
-    else hitSpark(x, y);
+    // (v4 §16.5) 타입별 시그니처 명중. 부재/미지 towerType이면 범용 폴백(hitSpark) — AC-53.
+    switch (towerType) {
+      case 'frost':  frostHitSig(x, y); break;
+      case 'arcane': arcaneHitSig(x, y); break;
+      case 'cannon': cannonHitSig(x, y); break;
+      case 'arrow':  arrowHitSig(x, y); break;
+      default:       if (!(splashRadius > 0)) hitSpark(x, y); // 구 페이로드 폴백(스플래시 없을 때만)
+    }
     if (target) retireTracer(target);
   }));
   on('enemy:killed', guard(({ enemy, x, y }) => {
@@ -360,7 +467,10 @@ export function initParticles() {
     if (tower && Number.isFinite(tower.x)) buildDust(tower.x, tower.y);
   }));
   on('tower:upgraded', guard(({ tower }) => {
-    if (tower && Number.isFinite(tower.x)) upgradeSparkle(tower.x, tower.y);
+    if (tower && Number.isFinite(tower.x)) {
+      upgradeSparkle(tower.x, tower.y);   // 기존 상승 반짝임(협연) — 유지
+      evolutionPillar(tower.x, tower.y);  // (v4 §16.6) 광기둥+글로우 — 셰이크 없음
+    }
   }));
   on('zone:created', guard(({ zone, x, y, radius, duration }) => {
     if (!Number.isFinite(x) || !(radius > 0)) return;
@@ -449,6 +559,39 @@ function drawOne(ctx, p) {
       ctx.moveTo(p.x - size, p.y); ctx.lineTo(p.x + size, p.y);
       ctx.moveTo(p.x, p.y - size); ctx.lineTo(p.x, p.y + size);
       ctx.stroke();
+      break;
+    }
+    // (v4) 시그니처/진화 전용 — p.color는 'r,g,b' 원문(그라디언트 스톱 조립용). globalAlpha가 페이드 담당.
+    case 'glow': { // 방사 그라디언트 소프트 글로우 (다층 글로우의 층 1개)
+      const r = Math.max(0.1, size);
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+      g.addColorStop(0, `rgba(${p.color},0.95)`);
+      g.addColorStop(0.45, `rgba(${p.color},0.5)`);
+      g.addColorStop(1, `rgba(${p.color},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case 'ray': { // 속도 방향으로 뻗는 테이퍼 그라디언트 광선 (머리 밝음→꼬리 소멸)
+      const spd = Math.hypot(p.vx, p.vy) || 1;
+      const ux = p.vx / spd, uy = p.vy / spd;
+      const len = 6 + size * 2.4;
+      const tx = p.x - ux * len, ty = p.y - uy * len;
+      const g = ctx.createLinearGradient(p.x, p.y, tx, ty);
+      g.addColorStop(0, `rgba(${p.color},0.95)`);
+      g.addColorStop(1, `rgba(${p.color},0)`);
+      ctx.strokeStyle = g; ctx.lineWidth = Math.max(1, size * 0.9); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(tx, ty); ctx.stroke();
+      break;
+    }
+    case 'pillar': { // (x,y) 바닥에서 위로 솟는 수직 그라디언트 광기둥
+      const h = size, w = PILLAR.width;
+      const g = ctx.createLinearGradient(p.x, p.y, p.x, p.y - h);
+      g.addColorStop(0, `rgba(${p.color},0.85)`);
+      g.addColorStop(0.5, `rgba(${p.color},0.35)`);
+      g.addColorStop(1, `rgba(${p.color},0)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(p.x - w / 2, p.y - h, w, h);
       break;
     }
     default: { // dot

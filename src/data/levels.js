@@ -24,6 +24,15 @@
  *                              (v3, §4.7) 전역 색 오버레이 — 스테이지 분위기(대낮→밤).
  *                              tilemap.js가 배경 캐시 위에 1회 적용. 게임플레이 무관(순수 시각).
  *                              null·미기입 = 오버레이 없음(스테이지 1 대낮 원색).
+ * @property {{col: number, row: number, family: 'water'|'dirt'|'cliff'|'lava'}[]} [terrain]
+ *                              (v4, §16.4) 배경 캐시(레이어 10)에 그릴 지형 패밀리 스킨. 순수 시각 — isBuildable 무영향.
+ *                              family ∈ {water,cliff,lava} 항목의 tiles[row][col]은 반드시 TILE.DECO
+ *                              (건설 불가 시각↔실제 정합, AC-56). dirt는 GRASS/DECO 무관(코스메틱 지면).
+ *                              tilemap이 인접 관계로 edge 타일(회전 4방)을 배치. 미기입 = 지형 패밀리 없음.
+ * @property {{col: number, row: number, key: string}[]} [animDecos]
+ *                              (v4, §16.4) terrain-anim 레이어(15) 애니 장식. key ∈ {deco_bush_anim, deco_crystal_shard_anim}.
+ *                              각 (col,row)는 반드시 decoTiles에 존재(정적 폴백 + TILE.DECO 정합). 배경 캐시에서
+ *                              제외되고 레이어 15에서 애니로 그려진다. 목표 수정(goal)은 tilemap이 전 5맵 자동 애니.
  *
  * 정합성 구속(QA 교차 검증, path.js validateLevel): tiles의 PATH 타일 집합 == waypoints가 지나는 타일 집합.
  * 시작 골드/라이프·hpScale은 이 파일 소관이 아님 — src/data/balance.js의 STAGE_BALANCE(§4.9, wave-balancer 소유).
@@ -34,6 +43,13 @@
  *   GRASS 타일 수:    113 > 102 > 100 >  89 >  79       (건설 압박 점진 상승)
  *   각 맵 킬존(사거리 160 기준 경로 다중 커버 GRASS) ≥ 2곳 확보 — 전략 가능성 유지.
  * LEVELS[0] = 기존 crystal_valley (waypoints·tiles·decoTiles 문자 단위 불변 — §15/AC-41).
+ *
+ * v4 (§16.4, v4.0-a): 순수 추가 필드 terrain·animDecos (선택). 배치 규칙: water=DECO / cliff·lava=DECO|PATH / dirt=무관.
+ *   GDD §14.3 테마 매핑:
+ *   1 없음(shard/bush 애니) / 2 dirt 전이 + bush 애니 / 3 water(DECO 셀) + bush 애니 / 4 cliff(DECO 셀) /
+ *   5 lava/cliff PATH 스킨(화산 도로 — 가로 레일=lava·세로 연결부=cliff, DECO 0개라 v4.0-a로 PATH 허용) + dirt GRASS 스코치(하단 화산재).
+ *   waypoints·tiles·decoTiles·건설 판정 전부 불변 — LEVELS[0] 동결 3필드 byte 동일(§16.8/AC-41).
+ *   PATH·DECO는 비건설이라 건설 셀 집합·명당 불변(sim 무영향, AC-56/60 정합).
  * ─────────────────────────────────────────────────────────────────────────
  */
 
@@ -89,7 +105,13 @@ export const LEVELS = [
       { col: 0, row: 9, key: 'deco_bush' },           // v2 좌하단 구석
       { col: 14, row: 8, key: 'deco_crystal_shard' }  // v2 도착 수정 하단 파편
     ],
-    tint: null
+    tint: null,
+    // (v4 §16.4) 스테이지 1 = 지형 패밀리 없음. animDecos = 파편 수정 반짝임 + 덤불 흔들림
+    // (§14.4 예시 상한 = goal + shard + bush 3종). 셀은 위 decoTiles의 동일 (col,row)에 존재 → 정적 폴백.
+    animDecos: [
+      { col: 14, row: 0, key: 'deco_crystal_shard_anim' }, // 우측 상단 파편 수정
+      { col: 6, row: 0, key: 'deco_bush_anim' }            // 상단 중앙 덤불
+    ]
   },
 
   // ══════════════════════════════════════════════════════════════════════
@@ -140,7 +162,20 @@ export const LEVELS = [
       { col: 10, row: 9, key: 'deco_bush' },
       { col: 13, row: 9, key: 'deco_rock' }
     ],
-    tint: { color: '#d9a441', alpha: 0.12 }
+    tint: { color: '#d9a441', alpha: 0.12 },
+    // (v4 §16.4/§14.3) 흙/모래 전이 — 하단 개방 밴드 2패치(3×2). 전부 GRASS 셀(코스메틱, 건설 가능 유지),
+    // 경로·DECO·킬존(4,5)/(10,3) 회피. tilemap이 grass 인접 방향으로 dirt edge(회전) 배치.
+    terrain: [
+      { col: 3, row: 8, family: 'dirt' }, { col: 4, row: 8, family: 'dirt' }, { col: 5, row: 8, family: 'dirt' },
+      { col: 3, row: 9, family: 'dirt' }, { col: 4, row: 9, family: 'dirt' }, { col: 5, row: 9, family: 'dirt' },
+      { col: 7, row: 8, family: 'dirt' }, { col: 8, row: 8, family: 'dirt' }, { col: 9, row: 8, family: 'dirt' },
+      { col: 7, row: 9, family: 'dirt' }, { col: 8, row: 9, family: 'dirt' }, { col: 9, row: 9, family: 'dirt' }
+    ],
+    // (v4 §14.4) 덤불 흔들림 — decoTiles의 deco_bush 셀에만.
+    animDecos: [
+      { col: 14, row: 3, key: 'deco_bush_anim' },
+      { col: 10, row: 9, key: 'deco_bush_anim' }
+    ]
   },
 
   // ══════════════════════════════════════════════════════════════════════
@@ -191,7 +226,19 @@ export const LEVELS = [
       { col: 0, row: 7, key: 'deco_rock' },
       { col: 14, row: 5, key: 'deco_bush' }
     ],
-    tint: { color: '#3a7d8c', alpha: 0.16 }
+    tint: { color: '#3a7d8c', alpha: 0.16 },
+    // (v4 §16.4/§14.3) 물 패밀리 — 기존 DECO 셀에만(건설 판정 불변, AC-56). 물가 전이는 tilemap이
+    // 인접 grass 방향으로 water edge(회전) 배치. 이 셀들의 정적 deco는 물로 대체(장식 미표시).
+    terrain: [
+      { col: 9, row: 3, family: 'water' },  // 중앙 물웅덩이 (갈래/합류 암시)
+      { col: 10, row: 4, family: 'water' }, // 중앙 물웅덩이
+      { col: 0, row: 7, family: 'water' },  // 좌측 물가
+      { col: 14, row: 5, family: 'water' }  // 우측 물가
+    ],
+    // (v4 §14.4) 덤불 흔들림 — 상단 좌측 덤불(물 셀과 미중복).
+    animDecos: [
+      { col: 1, row: 0, key: 'deco_bush_anim' }
+    ]
   },
 
   // ══════════════════════════════════════════════════════════════════════
@@ -248,7 +295,13 @@ export const LEVELS = [
       { col: 0, row: 7, key: 'deco_rock' },
       { col: 14, row: 7, key: 'deco_rock' }
     ],
-    tint: { color: '#3d4a6b', alpha: 0.24 }
+    tint: { color: '#3d4a6b', alpha: 0.24 },
+    // (v4 §16.4/§14.3) 절벽/바위 지대 — 병목의 '벽'을 좌우 가장자리 DECO 셀에 융기 타일로 표현.
+    // cliff는 전이 없는 솔리드(전방향 그림자 스커트로 건설 불가 시각 명확, AC-56). 정적 deco는 절벽으로 대체.
+    terrain: [
+      { col: 0, row: 4, family: 'cliff' }, { col: 14, row: 4, family: 'cliff' },
+      { col: 0, row: 7, family: 'cliff' }, { col: 14, row: 7, family: 'cliff' }
+    ]
   },
 
   // ══════════════════════════════════════════════════════════════════════
@@ -300,7 +353,26 @@ export const LEVELS = [
     // 서펜타인이 필드를 촘촘히 채워 체비쇼프 ≥2인 외곽 GRASS가 없다 —
     // decoTiles 없음(빈 배열). 밀도 높은 능선의 폐색감을 장식 없이 유지.
     decoTiles: [],
-    tint: { color: '#5a1d3a', alpha: 0.32 }
+    tint: { color: '#5a1d3a', alpha: 0.32 },
+    // (v4.0-a §16.4/§14.3) 화산 능선 — last_ridge는 DECO 셀 0개라 계약 완화(cliff·lava = DECO|PATH) + dirt는 GRASS 허용(기존 조항).
+    // dirt(지면) + lava(도로) 상보 배치 — lava가 실표시돼 tile_lava 고아 키 방지(architect 매니페스트 무결성).
+    // PATH 스킨: 가로 레일(짝수 행 0·2·4·6·8) = lava 용융 선반, 세로 연결부(홀수 행 1·3·5·7) = cliff 암벽 climb.
+    // dirt 스코치: 하단 여백 GRASS 밴드(row9) 2패치 = 화산재 지면(도로의 지면 카운터파트). 킬존(3,3)/(11,5)·밴드 강명당은 GRASS 원색 유지.
+    // 전부 순수 시각: waypoints·PATH·GRASS 건설셀 집합 불변(§16.8, sim 무영향). PATH lava는 방향 타일 위 반투명 accent로 AC-31 방향 흐름 보존.
+    terrain: [
+      { col: 0, row: 0, family: 'lava' }, { col: 1, row: 0, family: 'lava' }, { col: 2, row: 0, family: 'lava' }, { col: 3, row: 0, family: 'lava' }, { col: 4, row: 0, family: 'lava' }, { col: 5, row: 0, family: 'lava' }, { col: 6, row: 0, family: 'lava' }, { col: 7, row: 0, family: 'lava' }, { col: 8, row: 0, family: 'lava' }, { col: 9, row: 0, family: 'lava' }, { col: 10, row: 0, family: 'lava' }, { col: 11, row: 0, family: 'lava' }, { col: 12, row: 0, family: 'lava' }, { col: 13, row: 0, family: 'lava' }, // row0 용융 선반
+      { col: 13, row: 1, family: 'cliff' }, // row1 암벽 연결부
+      { col: 1, row: 2, family: 'lava' }, { col: 2, row: 2, family: 'lava' }, { col: 3, row: 2, family: 'lava' }, { col: 4, row: 2, family: 'lava' }, { col: 5, row: 2, family: 'lava' }, { col: 6, row: 2, family: 'lava' }, { col: 7, row: 2, family: 'lava' }, { col: 8, row: 2, family: 'lava' }, { col: 9, row: 2, family: 'lava' }, { col: 10, row: 2, family: 'lava' }, { col: 11, row: 2, family: 'lava' }, { col: 12, row: 2, family: 'lava' }, { col: 13, row: 2, family: 'lava' }, // row2 용융 선반
+      { col: 1, row: 3, family: 'cliff' }, // row3 암벽 연결부
+      { col: 1, row: 4, family: 'lava' }, { col: 2, row: 4, family: 'lava' }, { col: 3, row: 4, family: 'lava' }, { col: 4, row: 4, family: 'lava' }, { col: 5, row: 4, family: 'lava' }, { col: 6, row: 4, family: 'lava' }, { col: 7, row: 4, family: 'lava' }, { col: 8, row: 4, family: 'lava' }, { col: 9, row: 4, family: 'lava' }, { col: 10, row: 4, family: 'lava' }, { col: 11, row: 4, family: 'lava' }, { col: 12, row: 4, family: 'lava' }, { col: 13, row: 4, family: 'lava' }, // row4 용융 선반
+      { col: 13, row: 5, family: 'cliff' }, // row5 암벽 연결부
+      { col: 1, row: 6, family: 'lava' }, { col: 2, row: 6, family: 'lava' }, { col: 3, row: 6, family: 'lava' }, { col: 4, row: 6, family: 'lava' }, { col: 5, row: 6, family: 'lava' }, { col: 6, row: 6, family: 'lava' }, { col: 7, row: 6, family: 'lava' }, { col: 8, row: 6, family: 'lava' }, { col: 9, row: 6, family: 'lava' }, { col: 10, row: 6, family: 'lava' }, { col: 11, row: 6, family: 'lava' }, { col: 12, row: 6, family: 'lava' }, { col: 13, row: 6, family: 'lava' }, // row6 용융 선반
+      { col: 1, row: 7, family: 'cliff' }, // row7 암벽 연결부
+      { col: 1, row: 8, family: 'lava' }, { col: 2, row: 8, family: 'lava' }, { col: 3, row: 8, family: 'lava' }, { col: 4, row: 8, family: 'lava' }, { col: 5, row: 8, family: 'lava' }, { col: 6, row: 8, family: 'lava' }, { col: 7, row: 8, family: 'lava' }, { col: 8, row: 8, family: 'lava' }, { col: 9, row: 8, family: 'lava' }, { col: 10, row: 8, family: 'lava' }, { col: 11, row: 8, family: 'lava' }, { col: 12, row: 8, family: 'lava' }, { col: 13, row: 8, family: 'lava' }, { col: 14, row: 8, family: 'lava' }, // row8 용융 선반
+      // (A+) dirt 그을린 지면 — 하단 여백 GRASS 2패치(전부 row9 GRASS, 코스메틱·건설 가능 유지). 킬존·밴드 강명당 회피.
+      { col: 2, row: 9, family: 'dirt' }, { col: 3, row: 9, family: 'dirt' }, { col: 4, row: 9, family: 'dirt' }, { col: 5, row: 9, family: 'dirt' }, // 좌측 화산재
+      { col: 9, row: 9, family: 'dirt' }, { col: 10, row: 9, family: 'dirt' }, { col: 11, row: 9, family: 'dirt' }, { col: 12, row: 9, family: 'dirt' }  // 우측 화산재
+    ]
   }
 ];
 

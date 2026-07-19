@@ -22,3 +22,9 @@
 | 2026-07-08 | "완료 통지 = 최종 저장 후 게이트 재실행 결과" 규약 추가 | skills/td-code-standards, agents/wave-balancer | 자체 게이트 red 상태 완료 마킹 2회 재발(v2 D16-2·v3 D24-1) |
 | 2026-07-08 | 남은 골드 점수 반영·취소 버튼 위치 수정 라우팅 처리 (v3.1) | src(부분 재실행) | 골드 보너스 4요소·배치 취소 버튼 클릭 가로채기 버그 |
 | 2026-07-08 | "계약 배정 담당은 빠짐없이 태스크 등록" 규약 추가 | skills/td-orchestrator | v3.1 D30-1: 계약이 배정한 작업이 태스크 없이 틈으로 빠짐 |
+| 2026-07-19 | 에셋 파이프라인 v3 (3D 렌더 룩·멀티 시퀀스 시트 idle/attack·지형 타일 패밀리, slice_sheet.py --sequences) | skills/td-asset-pipeline | 에셋 3D 고퀄리티 변환 + 애니메이션 강화 요구 |
+| 2026-07-19 | 애니메이션 상태 머신·진화 변신 연출·지형 레이어(1.5) 규약 추가 | skills/td-code-standards | 아이들/공격 모션·레벨업 변신·움직이는 지형 요구 |
+| 2026-07-19 | 역할 보강 (3D 룩 시트/시퀀스 폴백·terrain-anim/상태 머신·크로스페이드/시그니처 이펙트·변신 연출/지형 패밀리) | agents/{asset-artist,engine-dev,entity-dev,fx-dev,map-designer} | v3 비주얼 업그레이드 지원 |
+| 2026-07-19 | 3D 전환·애니메이션 강화·지형 고도화 라우팅 추가 | skills/td-orchestrator | v3 비주얼 업그레이드 지원 |
+| 2026-07-19 | "entities/systems 변경 시 sim.mjs 게이트 포함 + 로더는 draw 전유" 규약 추가 | skills/td-code-standards | v4 D35-1: update 핫패스 getAnim 호출로 헤드리스 sim 크래시 |
+| 2026-07-19 | "생성+즉시 후처리 단일 잡" 권장·1행×8열 시트 변형 허용 | skills/td-asset-pipeline | v4 실증: 통지 지연 53분 스톨·2행 그리드보다 1행×8열이 안정 |

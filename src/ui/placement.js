@@ -26,7 +26,7 @@
  *      ui:error {reason: 'placement'}
  */
 import { on, emit } from '../core/events.js';
-import { get as getAsset } from '../core/assets.js';
+import { getAnim, seqFrames } from '../core/assets.js';
 import { isBuildable, inBounds, gridToPx, TILE_SIZE } from '../map/grid.js';
 import { towers } from '../systems/combat.js';
 import { TOWERS } from '../data/towers.js';
@@ -216,18 +216,36 @@ function drawRangeCircle(ctx, x, y, r, rgbaBase) {
   ctx.setLineDash([]);
 }
 
+/**
+ * 승격 타워 키의 idle 0프레임 크롭 정보 (§16.2, tower.js `_frameOf`와 동일 math).
+ * getAnim은 항상 {image, atlas}를, seqFrames는 항상 길이≥1을 반환하므로 정적 강등 키에서도 분기 불요.
+ * @param {string} key - tower_{type}_lv1
+ * @returns {{image: CanvasImageSource, sx:number, sy:number, sw:number, sh:number}}
+ */
+function idleFrame0(key) {
+  const { image, atlas } = getAnim(key);
+  const frame = seqFrames(atlas, 'idle')[0]; // idle 부재 시 첫 시퀀스로 강등(§16.2)
+  const imgW = image.naturalWidth || image.width || atlas.frameW;
+  const cols = Math.max(1, Math.floor(imgW / atlas.frameW)); // 시트 열 수(2행×4열 → 4)
+  return {
+    image,
+    sx: (frame % cols) * atlas.frameW,
+    sy: Math.floor(frame / cols) * atlas.frameH,
+    sw: atlas.frameW,
+    sh: atlas.frameH
+  };
+}
+
 function drawGhost(ctx, type, x, y) {
   const size = TILE_SIZE;
   ctx.save();
   ctx.globalAlpha = 0.65;
   try {
-    // 고스트는 건설 결과물 = Lv1 스프라이트 (§4.1-v2 assetKeys — v1 assetKey 폐지)
-    const img = getAsset(TOWERS[type]?.assetKeys?.[0] ?? `tower_${type}_lv1`);
-    if (img) {
-      ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
-      ctx.restore();
-      return;
-    }
+    // 고스트는 건설 결과물 = Lv1 스프라이트의 idle 0프레임 (§4.1-v2 assetKeys, §16.2)
+    const f = idleFrame0(TOWERS[type]?.assetKeys?.[0] ?? `tower_${type}_lv1`);
+    ctx.drawImage(f.image, f.sx, f.sy, f.sw, f.sh, x - size / 2, y - size / 2, size, size);
+    ctx.restore();
+    return;
   } catch (_) {
     // assets 스텁/로드 전 — 이니셜 폴백으로 진행
   }

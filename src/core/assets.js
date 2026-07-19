@@ -11,7 +11,9 @@
  *   2. 불투명 배경(#FF00FF 크로마키) → 로드 시점 캔버스로 픽셀 제거 후 반환
  *   3. 로딩 실패/파일 없음 → 키 접두사별 단색 플레이스홀더 + 콘솔 경고 1회
  *      tower_*=파랑 사각 / enemy_*=빨강 원 / proj_*=노랑 점 /
- *      tile_grass*=초록 사각 / tile_path*=갈색 사각 / 기타(deco_/goal_/entrance_)=회색 사각
+ *      tile_grass*=초록 사각 / tile_path*=갈색 사각 /
+ *      (v4 §16.1-C) tile_water*=청색 사각 / tile_dirt*=황갈색 사각 / tile_cliff=암회색 사각 / tile_lava=주황 사각 /
+ *      기타(deco_/goal_/entrance_)=회색 사각
  *
  * getAnim(key)는 **항상 {image, atlas}**를 반환한다 (§10 강등 체인):
  *   ① 쌍 정상 → 스트립 + 아틀라스 JSON
@@ -101,16 +103,22 @@ export function get(key) {
 
 /**
  * 애니메이션 조회 — 항상 {image, atlas} 반환 (§10 강등 체인 ①→②→③).
- * 강등 시 대응 정적 키(말미 '_walk' 제거)로 get()을 경유하므로
- * 정적 이미지가 있으면 그것을, 없으면 카테고리 플레이스홀더를 단일 프레임으로 쓴다.
- * @param {string} key - 예: 'enemy_goblin_walk'
+ * 강등 시 대응 정적 키로 get()을 경유하므로 정적 이미지가 있으면 그것을, 없으면 카테고리
+ * 플레이스홀더를 단일 프레임으로 쓴다.
+ * (v4 §16.2) 정적 폴백 키 파생: 후행 애니 접미사 집합 `{_walk, _anim}`을 스트립한다.
+ *   - enemy_goblin_walk → enemy_goblin(정적 존재) ✓ (기존)
+ *   - goal_crystal_anim → goal_crystal / deco_bush_anim → deco_bush / deco_crystal_shard_anim → deco_crystal_shard ✓ (v4)
+ *   - tower_arrow_lv1(접미사 없음) → 자기 자신 → get()이 파랑 사각 플레이스홀더 반환 ✓ (타워는 별도 정적 키 없음, AC-59 허용)
+ * 합성 단일 프레임 아틀라스는 시퀀스 ≥1개(walk:[0])를 보장한다 → 소비자가 seqFrames()(또는 동일 인라인
+ *   `sequences[seq] ?? Object.values(sequences)[0]`)로 idle/attack/walk 어느 시퀀스를 요청해도 안전(§16.2 시퀀스 폴백).
+ * @param {string} key - 예: 'enemy_goblin_walk', 'goal_crystal_anim'
  * @returns {{image: HTMLImageElement | HTMLCanvasElement, atlas: Atlas}}
  */
 export function getAnim(key) {
   const hit = animStore.get(key);
   if (hit) return hit;
 
-  const baseKey = key.replace(/_walk$/, '');
+  const baseKey = key.replace(/_(walk|anim)$/, ''); // (v4 §16.2) 애니 접미사 집합 {_walk,_anim} 스트립
   if (!warnedKeys.has(`anim:${key}`)) {
     warnedKeys.add(`anim:${key}`);
     console.warn(`[assets] '${key}' 애니메이션 미가용 — '${baseKey}' 정적 단일 프레임으로 강등`);
@@ -124,6 +132,28 @@ export function getAnim(key) {
   };
   animStore.set(key, fallback); // 키당 1회만 합성
   return fallback;
+}
+
+/**
+ * 시퀀스 → 프레임 인덱스 배열 해석 (§16.2 시퀀스 폴백 규칙, AC-59).
+ * 요청 시퀀스가 아틀라스에 없으면 **첫 시퀀스로 강등**한다. 합성 단일 프레임 아틀라스(getAnim 강등 ②③)는
+ * 시퀀스 ≥1개를 보장하므로 idle/attack/walk 어느 요청도 안전 — 항상 길이 ≥1 배열을 반환한다.
+ * 소비자(entities/tower.js draw·ui/shop·ui/placement·map/tilemap)는 이 함수 또는 계약이 명시한 동일 인라인 식
+ *   `atlas.sequences[seq] ?? Object.values(atlas.sequences)[0]`
+ * 중 어느 쪽을 써도 동일 결과다. 로더가 아틀라스 시맨틱을 소유하므로 폴백 규칙을 여기 중앙화해 오구현을 원천 차단한다.
+ * @param {Atlas} atlas - getAnim(key).atlas
+ * @param {string} seq - 표준 시퀀스명 'idle' | 'walk' | 'attack' (§16.2)
+ * @returns {number[]} 길이 ≥1 프레임 인덱스 배열 (아틀라스가 완전 비정상이어도 최후 폴백 [0])
+ */
+export function seqFrames(atlas, seq) {
+  const seqs = atlas && atlas.sequences;
+  if (seqs && typeof seqs === 'object') {
+    const wanted = seqs[seq];
+    if (Array.isArray(wanted) && wanted.length > 0) return wanted;
+    const first = Object.values(seqs)[0];
+    if (Array.isArray(first) && first.length > 0) return first;
+  }
+  return [0]; // 아틀라스 구조가 깨져도 draw 호출부가 크래시하지 않도록 (폴백 계약 §8 정신)
 }
 
 /**
@@ -215,7 +245,8 @@ function isChromaPixel(px, i) {
 }
 
 /**
- * 키 접두사별 단색 플레이스홀더 캔버스 (계약 §5 폴백 표 — v2: tile_grass·tile_path 변형 키 포함).
+ * 키 접두사별 단색 플레이스홀더 캔버스 (계약 §5 폴백 표 — v2: tile_grass·tile_path 변형 키,
+ * v4 §16.1-C: tile_water/dirt/cliff/lava 지형 패밀리 색 추가).
  * @param {string} key
  * @returns {HTMLCanvasElement}
  */
@@ -244,6 +275,18 @@ function makePlaceholder(key) {
     ctx.fillRect(0, 0, s, s);
   } else if (key.startsWith('tile_path')) {
     ctx.fillStyle = '#8b6f47'; // 길 갈색 (방향 변형 포함)
+    ctx.fillRect(0, 0, s, s);
+  } else if (key.startsWith('tile_water')) {
+    ctx.fillStyle = '#2f7fd0'; // (v4) 물 청색 (tile_water·tile_water_edge — 건설 불가 시각, AC-56)
+    ctx.fillRect(0, 0, s, s);
+  } else if (key.startsWith('tile_dirt')) {
+    ctx.fillStyle = '#c2a05a'; // (v4) 흙/모래 황갈색 (tile_dirt·tile_dirt_edge — 코스메틱 지면)
+    ctx.fillRect(0, 0, s, s);
+  } else if (key.startsWith('tile_cliff')) {
+    ctx.fillStyle = '#565656'; // (v4) 절벽 암회색 (건설 불가 시각)
+    ctx.fillRect(0, 0, s, s);
+  } else if (key.startsWith('tile_lava')) {
+    ctx.fillStyle = '#e2571e'; // (v4) 용암 주황 (위험 신호 — emissive 대체 색)
     ctx.fillRect(0, 0, s, s);
   } else {
     ctx.fillStyle = '#8a8a8a'; // deco_/goal_/entrance_/미지 키 = 회색 사각

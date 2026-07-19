@@ -9,8 +9,9 @@
  * 발행: tower:placed {tower, cost} / tower:upgraded {tower, cost} / tower:sold {tower, refund}
  *      build:rejected {towerType, col, row, reason: 'gold'|'tile'|'occupied'}
  *      tower:fired {towerType, x, y, target}
- *      projectile:hit {target, damage, x, y, splashRadius} — target은 Enemy|null (§3.4 v1.1),
- *        damage는 주 타겟 실피해(없으면 0 — fx는 0이면 숫자 생략 권장)
+ *      projectile:hit {target, damage, x, y, splashRadius, towerType} — target은 Enemy|null (§3.4 v1.1),
+ *        damage는 주 타겟 실피해(없으면 0 — fx는 0이면 숫자 생략 권장),
+ *        (v4 §16.5) towerType은 발원 타워 타입 — 비파괴 선택 필드(fx 시그니처 명중 이펙트 분기)
  *      enemy:killed {enemy, reward, x, y} / enemy:escaped {enemy, livesCost}
  *      enemy:slowed {enemy, factor, duration}
  *      (v2 §3.9) zone:created {zone, x, y, radius, duration, kind} / zone:expired {zone}
@@ -186,6 +187,7 @@ function resolveHit(proj, hit) {
     x: hit.x,
     y: hit.y,
     splashRadius,
+    towerType: spec.towerType, // v4 §16.5 — 비파괴 선택 필드. fx 시그니처 명중 이펙트 분기용
   });
 
   // 3) rapid_volley — 직격 명중 통지 (스택 갱신은 tower 내부 규칙 — AC-23)

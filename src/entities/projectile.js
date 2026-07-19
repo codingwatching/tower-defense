@@ -15,7 +15,8 @@ export class Projectile {
   alive = true;
 
   /**
-   * @param {object} spec - TOWERS[type].projectile + {damage, damageType} (발사 시점 타워 레벨 수치)
+   * @param {object} spec - TOWERS[type].projectile + {damage, damageType, towerType} (발사 시점 타워 레벨 수치)
+   *   (v4 §16.5) towerType은 발원 타워 타입 — combat이 명중 시 projectile:hit 페이로드로 전달
    * @param {number} x @param {number} y - 발사 위치 (타워 중심)
    * @param {import('./enemy.js').Enemy} target - 추적 대상 (사망 시 마지막 위치로 직진)
    */
