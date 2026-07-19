@@ -21,6 +21,7 @@ import { on, emit } from '../core/events.js';
 import { getGold } from '../systems/economy.js';
 import { TOWERS } from '../data/towers.js';
 import { BALANCE } from '../data/balance.js';
+import { slideIn, slideOut, shakeX } from './anim.js';
 
 const STAGE_W = 960;
 const STAGE_H = 640;
@@ -37,13 +38,6 @@ function num(v, fallback) {
 
 function fmt(v) {
   return Number.isFinite(v) ? String(v) : '?';
-}
-
-function flash(el, cls) {
-  if (!el) return;
-  el.classList.remove(cls);
-  void el.offsetWidth;
-  el.classList.add(cls);
 }
 
 function statRow(label, value) {
@@ -167,11 +161,14 @@ function show(tower) {
   panelEl.classList.remove('hidden');
   render();
   positionNear(tower);
+  slideIn(panelEl); // (v5) 슬라이드 인(outExpo) — 표현만, 표시 상태는 위 classList로 확정
 }
 
 function hide() {
   current = null;
-  panelEl.classList.add('hidden');
+  if (!panelEl || panelEl.classList.contains('hidden')) return;
+  // (v5) 슬라이드 아웃 후 .hidden 부착 — 종료 상태는 onDone에서 확정(트윈 실패해도 즉시 숨김)
+  slideOut(panelEl, () => panelEl.classList.add('hidden'));
 }
 
 function buttonAt(x, y) {
@@ -193,7 +190,7 @@ function onPanelClick(e) {
       emit('ui:error', {
         reason: btnUp.dataset.reason === 'max-level' ? 'max-level' : 'gold'
       });
-      flash(btnUp, 'shake');
+      shakeX(btnUp); // (v5) anime.js 흔들림 — 골드 부족/최대 레벨 배치 불가 피드백
       return;
     }
     emit('ui:upgrade-requested', { towerId: current.id });

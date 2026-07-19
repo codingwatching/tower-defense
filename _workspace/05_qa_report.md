@@ -1236,3 +1236,211 @@ team-lead 지시 item③: 실에셋 로딩 상태에서 타워 idle/attack·terr
 **최종 통합 게이트 8항목 + item③ + D35-1 상설 + 이벤트 43종 = 전항목 GREEN. v4 QA 완전 종결.**
 
 **주의(스코프 경계):** CDP 구동 검증은 "렌더 경로 실행 + window.GAME 상태 + 콘솔 0 + 정지 스크린샷"까지다. **움직임의 체감**(idle 루프가 실제로 애니메이션되는지·시그니처 이펙트 시각 구별 AC-53·진화 크로스페이드 AC-54·60fps AC-58·terrain-anim 실제 흔들림)은 여전히 playtester 연속 프레임/gif 육안 몫 — 정지 프레임+상태 훅으로는 "그려진다"까지만 증명된다.
+
+---
+
+# v5 절차적 트윈(anime.js) + 타일 팔레트 QA — 2026-07-19
+
+기준: 계약 §17(17.0~17.7), td-code-standards "절차적 트윈 규약(v5)", 입력 `_workspace/00_input_v5.md`. 증분 검증 — 각 담당 완료 통지마다 해당 경계면 즉시 교차 검증(판정 전 현 워킹트리 재확인, 저장 레이스 주의). 원칙: 순수 시각 — 밸런스·이벤트 43종·데이터 스키마 §4·매니페스트 51키 **불변**.
+
+## [검증 회차 46] entity-dev #5 — 엔티티 vis 시각 상태 계약 — 2026-07-19
+
+| # | 심각도 | 항목 | 결과 | 확인 방법(파일:줄 / 명령) |
+|---|---|---|---|---|
+| 1 | — | sim 회귀 | **PASS** | `node scripts/sim.mjs` exit 0, "✔ 전 항목 통과 (48항목)" (현 트리 재실행) |
+| 2 | — | vis 6필드 identity | **PASS** | tower.js:137·enemy.js:97 `{sx:1,sy:1,rot:0,alpha:1,ox:0,oy:0}` §17.3 문자 일치 |
+| 3 | — | update() vis 불가지 | **PASS** | tower update(219–292)·enemy update(113–144) 구간 vis 참조 0 (전부 draw에만) — 헤드리스 불변식 2 |
+| 4 | — | draw 변환 순서 | **PASS** | tower.js:306–309 translate(ox/oy)→scale(sx/sy)→rotate(vis.rot)→globalAlpha*=vis.alpha / enemy.js:154–157 동순, 적은 rotate(this.angle+vis.rot) — §17.3 규칙 일치 |
+| 5 | — | EVOLVE_SCALE_PEAK 삭제 | **PASS** | `grep -rn EVOLVE_SCALE_PEAK src` → 주석 2곳(설명)뿐, 상수 선언·inline sin 계산 삭제. 크로스페이드(evolveTimer/evolvePrevLevel/EVOLVE_DURATION) 존치·`_frameOf`(getAnim) draw 전유(D35-1) 확인 |
+
+**회차 46 = GREEN(결함 0).** 결함 리포트 없음, entity-dev에 GREEN 회신.
+
+## [검증 회차 47] asset-artist #2 — 타일 팔레트 보정(B범위, 계약 무관) — 2026-07-19
+
+정정 기준: 단일재질(잔디)=whole-tile `--check`, 2재질(전이·길)=재질별 세그먼트 거리(whole-tile 평균색은 단일앵커와 원리상 불일치, 잔디 오염 회피 — memory: tile-transition-segmented-harmonize).
+
+| # | 심각도 | 항목 | 결과 | 확인 방법 |
+|---|---|---|---|---|
+| 1 | — | 잔디 패밀리 --check | **PASS** | `harmonize_palette.py --check --anchor tile_grass.png tile_grass_clover.png tile_grass_flower.png --threshold 18` → clover 13.6 PASS / flower 7.0 PASS, exit 0 |
+| 2 | — | 세그먼트 재질별 거리 | **PASS** | `_workspace/tools/tile_seam_check.py` → path 6종+water_edge+dirt_edge 전부 grass여백 d·재질 d ≤18 (최대 grass여백 16.2 path_se·재질 11.8 water_edge), "전 항목 PASS: True". artist 표(16.2)와 일치 |
+| 3 | — | 몽타주 육안 | **PASS** | 03_tilecheck_loop.png: 3×3 잔디 색온도 일관(패치워크 해소)·길 연속 루프 매끄러움. seam.png: grass→water/grass→dirt 전이 자연, 코너 프린징 0. 잔디 붉은 반점=클로버/꽃 텍스처(타일 간 일관, 결함 아님) |
+| 4 | — | 규격·키·경로 불변 | **PASS** | 수정 8종 전부 256² RGBA, `git status assets/manifest.js` 무변경, 키/경로 동일, 추가/리네임/삭제 0, pre_harmonize 백업 8종 보존 |
+
+**회차 47 = GREEN(결함 0).** asset-artist에 GREEN 회신.
+
+## [검증 회차 48] fx-dev #4 — tween 파사드(src/fx/tween.js) — 2026-07-19
+
+| # | 심각도 | 항목 | 결과 | 확인 방법 |
+|---|---|---|---|---|
+| 1 | — | 문법·sim | **PASS** | `node --check src/fx/tween.js` OK / `node scripts/sim.mjs` exit 0(48). tween.js는 sim import 그래프 밖 |
+| 2 | — | import 경계 게이트 | **PASS** | `grep -rl "vendor/anime" src/entities src/systems src/map src/core src/data` → **빈 출력**. 허용 importer만(fx/tween.js·ui/anim.js). main.js는 vendor/anime 주석뿐, 실 import는 './fx/tween.js' 파사드 |
+| 3 | — | anime v4 API 정합 | **PASS** | `import { animate }`(vendor `Me as animate` 실존). v3 default export 미사용. **pauseAll=자체 추적분(track()→active)만 pause, 전역 engine 미사용**(tween.js:63) → UI 트랜지션 무영향, §17.5 의도 정확 |
+| 4 | — | 8 시그니처 + 상한 | **PASS** | popIn/deathOut/punch(scale=1.15)/recoil/shake/pauseAll/resumeAll/killTweens 전부. `MAX_ACTIVE_TWEENS` 96/56(coarse), 초과 시 oldest settle |
+| 5 | — | 트리거 배선(기존 이벤트만) | **PASS** | initTween: tower:placed→popIn+캐시 / upgraded→punch+캐시 / sold→캐시delete+killTweens / fired→recoil(towerVisByPos (x,y) resolve, target null·미스 생략) / enemy:spawned→popIn(boss:spawned 미구독=이중 popIn 방지) / killed→시체 deathOut+killTweens / escaped→killTweens / game:started→시체·캐시 정리. **신규 이벤트 0**, 페이로드 필드 전부 emit에 실존 |
+| 6 | — | vis 1:1 | **PASS** | 프리셋이 계약 6필드(sx/sy/rot/alpha/ox/oy)만 write. killTweens·makeCorpse 동일 6필드 identity. 곁가지 필드 0, entity vis와 완전 일치 |
+| 7 | — | 시체 분리 | **PASS** | 시체=fx 소유 풀 기반 별도 vis(라이브 enemy.vis 아님). updateCorpses는 getAnim 미호출(draw 전유), drawCorpses만 resolveCorpseAnim |
+| 8 | — | 강등 보장 | **PASS** | HAS_ANIME 가드 — anime 부재/API 불일치 시 finalState 즉시 정착 no-op(§17.5 부분 재실행 보장) |
+
+**회차 48 = GREEN(결함 0).** v3/v4 API 혼동(최다 예상 결함) 없음. fx-dev에 GREEN 회신 + team-lead 재검증 6항목 문자 대조 회신.
+
+## [검증 회차 49] ui-dev #6 — UI 트랜지션(anime 직접 import) — 2026-07-19
+
+| # | 심각도 | 항목 | 결과 | 확인 방법 |
+|---|---|---|---|---|
+| 1 | — | anime import 격리 | **PASS** | `grep -rn vendor/anime src/ui` → anim.js:14 한 곳뿐. hud/panel/screens/shop/stageselect 5파일은 './anim.js' 파사드 경유 |
+| 2 | — | 신규 이벤트 0·게임상태 트윈 0 | **PASS** | UI emit 13종 전부 기존 계약 이벤트. hud는 gold:changed.gold/score:changed.score 이벤트 값을 setGold/setScore에 직접 반영, 트윈 대상은 표시 카운터(shown/proxy)뿐 — 실제 값은 이벤트/getGold() 그대로(hud.js:32 주석·158/153) |
+| 3 | — | 이징 계약 | **PASS** | 실사용 이징 outExpo/outCubic/outElastic만. anim.js:12의 'linear'는 "linear 금지" 주석 텍스트, 실사용 0 |
+| 4 | — | 문법 | **PASS** | `node --check` anim/hud/panel/screens/shop/stageselect 6파일 전부 OK |
+| 5 | — | 카운트업 착지 정합 | **PASS** | onComplete `format(target)` 정확 착지(오프바이원 0), `Number.isFinite` 가드로 NaN/undefined 노출 0, reduced-motion·from===target 즉시 스냅, HAS_ANIME 강등 즉시 최종값. snapCount 동일 |
+
+**회차 49 = GREEN(결함 0).** virtual-time 트윈 미틱(rAF)은 착지값 정합 위주 검증(모션 체감은 playtester #8). ui-dev에 GREEN 회신.
+
+**[회차 49-델타] screens.js 최종점수 카운트업 후속 추가(#7 판정 이후) — GREEN.** `node --check src/ui/screens.js` OK / 게임 상태 트윈 0: countUp이 `.score-total-value` DOM 텍스트만 0→total 롤업(screens.js:122–128, 표시 전용), 값 진실=score:finalized.f.total 캐시(line 104) / import 경계 불변: './anim.js' 경유(line 28), vendor/anime 직접 import 0, 경계 게이트 EMPTY 유지. 신규 이벤트 0·페이로드 0.
+
+## [검증 회차 50] engine-dev #3 — anime 벤더링 + main 배선/일시정지 연동 — 2026-07-19
+
+| # | 심각도 | 항목 | 결과 | 확인 방법 |
+|---|---|---|---|---|
+| 1 | — | 벤더 파일 | **PASS** | `vendor/anime.esm.min.js` 첫 줄 `/* anime.js v4.1.4 ESM — vendored 2026-07-19 */`. `grep -o "export{...}"` → v4 named export animate/createTimeline/stagger/engine 실존 |
+| 2 | — | 경계 게이트 | **PASS** | `grep -rl "vendor/anime" src/entities src/systems src/map src/core src/data` → 빈 출력. `grep -rl vendor/anime src/` → fx/tween.js·ui/anim.js 2곳뿐 |
+| 3 | — | main 배선 4곳 | **PASS** | `import {...} from './fx/tween.js'`(main.js:77, 상대경로 정확) / initTween: `safeInit('fx/tween',initTween)`(286) / updateCorpses: fxUpdaters `['fx/tween-corpses',updateCorpses]`(217) / drawCorpses: `registerLayer(15,drawCorpses)`(296) / pauseAll(152·162·173, 'playing' 이탈)·resumeAll(205, 'playing' 진입) |
+| 4 | — | 시체 레이어 화이트리스트 | **PASS** | LAYER_ORDERS=[10,15,20,30,40](renderer.js:19). drawCorpses=15(terrain-anim band, 엔티티20 아래·배경10 위) — 계약 화이트리스트 내. **18(tween.js 헤더 권장)은 미승인이라 미사용**(renderer.js:69 경고 회피) |
+| 5 | — | sim | **PASS** | `node scripts/sim.mjs` exit 0(48). main/tween/anime는 sim import 그래프 밖 |
+
+**회차 50 = GREEN(결함 0).** engine-dev에 GREEN(암묵)·아래 통합 스모크로 최종 확인.
+
+## [검증 회차 51] 통합 헤드리스 Chrome 부팅 스모크 + 최종 판정 (CDP 실구동) — 2026-07-19
+
+로컬 서버(`python3 -m http.server 8000`) + 헤드리스 Chrome(`--headless=new --remote-debugging-port=9223`) + node22 CDP. 부팅 + 전이 실경로 구동(scratchpad/boot_smoke.mjs·drive2.mjs). **콘솔 로그 캡처: Runtime.consoleAPICalled·exceptionThrown·Log.entryAdded 전량.**
+
+| # | 항목 | 결과 | 확인(window.GAME 훅 / 콘솔) |
+|---|---|---|---|
+| 1 | 부팅 | **PASS** | 에셋 51/51 로딩, state=title, hasGAME=true. 콘솔 info 2줄뿐 |
+| 2 | 스테이지 진입·경제 | **PASS** | `emit('ui:stage-selected',{stageIndex:0})`→state=playing, gold 120 |
+| 3 | 타워 popIn | **PASS** | `emit('ui:build-requested',{arrow,col:4,row:0})`→towers=1, gold 120→70(50 차감). popIn(tower.vis) 실경로 |
+| 4 | 적 popIn | **PASS** | wave-start→enemies 1→3 스폰, popIn(enemy.vis)×N |
+| 5 | 발사 recoil | **PASS** | 1.4s 실전투 진행(타워 사격)→tower:fired→recoil(위치캐시 resolve) 실경로, 예외 0 |
+| 6 | 시체 deathOut 레이어15 | **PASS** | `emit('enemy:killed')`→spawnCorpse→drawCorpses(레이어15) 렌더 프레임 실행, **"레이어 15 draw 예외" 0** |
+| 7 | pauseAll/resumeAll | **PASS** | playing→stage-select(pauseAll)→playing(resumeAll) 전이 s2=stage-select·s3=playing, 예외 0 |
+| 8 | **콘솔 클린** | **PASS** | 전 구동 경로(부팅+건설+웨이브+전투+시체+전이) 콘솔 **error 0·warning 0·exception 0·"레이어 N draw 예외" 0**. "계약 외 레이어" 경고 0 → drawCorpses 레이어15 등록 재확인 |
+
+**회차 51 = GREEN.** 통합 부팅 스모크: 실에셋·실이벤트버스·실 anime v4.1.4 구동 전 경로 콘솔 클린.
+
+---
+
+## v5 QA 최종 판정 — 전 게이트 GREEN
+
+| 게이트 | 결과 | 근거 |
+|---|---|---|
+| `node --check` 전 변경 파일 | **GREEN** | entities 2·fx/tween.js·ui 6·main.js 전부 OK |
+| `node scripts/sim.mjs` exit 0 | **GREEN** | 48/48(회차 46·48·50 각 재실행) — 밸런스·게임플레이 불변 |
+| import 경계 grep(§17.2) | **GREEN** | entities/systems/map/core/data 빈 출력, 허용 importer만(fx/tween.js·ui/anim.js) |
+| vis 계약 6필드 1:1(§17.3) | **GREEN** | entity 초기화 ↔ fx 트윈 대상 문자 일치, update vis 불가지, EVOLVE_SCALE_PEAK 삭제 |
+| 트리거 배선(기존 이벤트만) | **GREEN** | 신규 이벤트 0, 페이로드 불변, boss:spawned 미구독=이중 popIn 방지 |
+| 헤드리스 Chrome 부팅 스모크 | **GREEN** | 콘솔 error/warn/exception 0, "레이어 N draw 예외" 0(레이어15 시체 포함) |
+| 타일 --check/세그먼트(B범위) | **GREEN** | 잔디 --check exit 0, 세그먼트 전 항목 ≤18, 몽타주 패치워크 해소·프린징 0, 규격/키/경로 불변 |
+
+**결함(P0/P1/P2/P3): 0건.** 밸런스·이벤트 43종·데이터 스키마 §4·매니페스트 51키·경로 기하 전부 불변 확인(순수 시각 원칙 §17.7 준수).
+
+### 계약 문서 정밀 관찰(P3 — 결함 아님, architect 문구 정정 권장)
+
+engine-dev·fx-dev가 구현 중 표면화한 계약 문구 vs 올바른 구현의 불일치 2건. 코드는 올바르므로 블로커 아님, 재발 방지 위해 문서 조임 권장:
+
+1. **import 경로:** §17.5/§17.6은 `../fx/tween.js`로 표기하나 main.js는 `src/` 직속이라 올바른 경로는 `./fx/tween.js`(engine-dev 구현). `../`는 부팅 404. → 계약 문구를 `./fx/tween.js`로 정정 권장.
+2. **시체 레이어(값 진동, 회차 52·53):** 15↔18로 실시간 왕복(계약 조정 핑퐁). QA는 값을 쫓지 않고 **불변식으로 판정** — `registerLayer(N,drawCorpses)`의 N이 `LAYER_ORDERS` 화이트리스트에 있고(무모순 페어링) 스모크 "레이어 N draw 예외" 0이면 GREEN. 두 상태(15·18) 모두 실증 GREEN. **최종 프리즈 시 register-arg ∈ whitelist 1줄 grep만 확인 권장.** 하네스에 "레이어 번호는 계약 화이트리스트 전용" 규칙 추가(td-code-standards) — 재발 방지.
+
+### QA 커버리지 경계(잔여 = playtester #8 실체감)
+
+헤드리스/CDP가 커버: 구조·계약·배선·착지값·콘솔 클린·레이어 예외 0. **트윈의 움직임 체감**(popIn 오버슈트·deathOut 페이드·recoil 반동·punch 탄성·UI 슬라이드/카운트업 부드러움·타일 seam 육안)은 rAF 실시간이라 헤드리스 virtual-time에서 미틱 — playtester #8 연속 프레임 몫.
+
+## [검증 회차 52] v5.0-c 시체 레이어 15→18 델타 재검증(#7 판정 이후) — 2026-07-19
+
+engine-dev가 #7 GREEN 이후 시체 레이어를 15→18로 이동(architect 판정 B, 계약 v5.0-c). 시체 전용 레이어로 terrain-anim(15)와의 등록순서 암묵 결합 제거. 게이트가 판정한 트리가 바뀌어 델타 직접 재검증(현 워킹트리·최종 저장 직후).
+
+변경: `src/core/renderer.js`(LAYER_ORDERS에 18 추가) + `src/main.js`(registerLayer 15→18).
+
+| # | 항목 | 결과 | 확인 방법 |
+|---|---|---|---|
+| 1 | 문법 | **PASS** | `node --check` renderer.js·main.js OK |
+| 2 | 화이트리스트 | **PASS** | renderer.js:22 `LAYER_ORDERS=[10,15,18,20,30,40]`, 경고 가드 문구 "10\|15\|18\|20\|30\|40"(:72) |
+| 3 | 시체 등록 | **PASS** | main.js:293 `registerLayer(18, drawCorpses)`. 스택: terrainAnim/waterGlint(15) → corpses(18) → entities(20) — 시체가 지형 위·라이브 엔티티 아래(올바른 occlusion) |
+| 4 | sim·경계 | **PASS** | `node scripts/sim.mjs` exit 0(48), 경계 grep(entities/systems/map/core/data) 빈 출력 |
+| 5 | 부팅 스모크(레이어18) | **PASS** | CDP 실구동(진짜 TD 서버): 건설→웨이브→enemy:killed(시체 deathOut 레이어18)→전이 전 경로 콘솔 **error/warn/exception 0·"레이어 18 draw 예외" 0·"계약 외 레이어" 경고 0**(18 등재로 미발생) |
+
+**회차 52 = GREEN(단, 중간 상태 — 회차 53에서 되돌림).** 이 시점 트리는 레이어 18. 이후 architect가 전용 18을 철회하고 레이어 15 공동 등록(명시 순서)으로 최종 확정 → **회차 53이 최종 판정.**
+
+**⚠ 환경 함정 기록:** 이 회차 최초 스모크가 포트 8000에서 콘솔 THREE.js/lava 에러 다발을 반환 → **다른 프로젝트("용암" THREE.js 앱)가 포트 8000 선점**, 내 TD 서버 바인딩 실패로 curl/CDP가 엉뚱한 앱을 침(TD 파일 8000에서 404). 결함으로 오판하지 않고 진단 → TD 서버를 자유 포트(8234)로 올려 `<title>크리스탈 가드</title>`·src 파일 200 확인 후 재구동. **교훈: 부팅 스모크 전 서버가 실제 TD를 서빙하는지 title/src 파일로 반드시 확인**(포트 선점 가능).
+
+## [검증 회차 53] 시체 레이어 18→15 **최종** 되돌림(v5.0-c 최종) 재검증 — 2026-07-19
+
+architect가 전용 레이어 18을 철회하고 **레이어 15 공동 등록**(terrain-anim 밴드, 명시 등록순서 terrainAnim→waterGlint→corpse)으로 최종 확정. 시체 레이어 churn 15→18→15 종결. 하네스에 "레이어 번호는 계약 화이트리스트 전용" 규칙 추가됨(td-code-standards). 게이트 판정 트리가 재차 바뀌어 최종 트리로 재검증(현 워킹트리).
+
+변경: `src/core/renderer.js`(LAYER_ORDERS에서 18 제거, [10,15,20,30,40] 복귀) + `src/main.js`(registerLayer 18→15) + fx/tween.js 헤더 주석 "레이어 15".
+
+| # | 항목 | 결과 | 확인 방법 |
+|---|---|---|---|
+| 1 | 문법 | **PASS** | `node --check` renderer.js·main.js OK |
+| 2 | 화이트리스트 | **PASS** | renderer.js:21 `LAYER_ORDERS=[10,15,20,30,40]`(18 제거), 경고 가드 "10\|15\|20\|30\|40"(:71) |
+| 3 | 시체 등록·순서 | **PASS** | main.js:295 `registerLayer(15, drawCorpses)`. 레이어15 등록순서 291 terrainAnim→292 waterGlint→295 corpse→(296) entities(20). 시체가 지형 위·라이브 엔티티 아래(올바른 occlusion) |
+| 4 | 표기 정합 | **PASS** | 헤더(fx/tween.js:334)·구현(main.js:295·42)·화이트리스트 전부 "레이어 15"로 일치 — P3 관찰 ② 완전 해소 |
+| 5 | sim·경계 | **PASS** | `node scripts/sim.mjs` exit 0(48), 경계 grep 빈 출력 |
+| 6 | 부팅 스모크(레이어15) | **PASS** | 진짜 TD 서버(8237, `<title>크리스탈 가드</title>` 확인) + CDP: 건설(popIn)→웨이브(적 popIn)→enemy:killed(시체 deathOut 레이어15)→playing↔stage-select(pauseAll/resumeAll) 전 경로 콘솔 **error/warn/exception 0·"레이어 15 draw 예외" 0·"계약 외 레이어" 경고 0** |
+
+**회차 53 = GREEN** (이 스냅샷 기준 레이어 15).
+
+**⚠ 시체 레이어 값 진동(계약 조정 핑퐁, memory: contract-adjudication-lag-pingpong):** 검증 중 시체 레이어가 15→18→15→18로 실시간 왕복(18:06 재편집 관측). 값 자체를 쫓는 대신 **불변식으로 판정한다.**
+
+**불변식 기반 최종 판정(값 진동 무관):** 시체 레이어의 구체값(15 vs 18)은 시각 결과가 동일한 계약상 선택이며 QA 블로커가 아니다. QA가 통제하는 불변식은 딱 하나 —
+- **`registerLayer(N, drawCorpses)`의 N ∈ `LAYER_ORDERS` 화이트리스트 (무모순 페어링) + 부팅 스모크 "레이어 N draw 예외" 0.**
+
+QA는 **두 무모순 상태를 모두 GREEN으로 실증**했다: 레이어 18(회차 52, 화이트리스트 [10,15,18,…], 스모크 예외 0)·레이어 15(회차 53, 화이트리스트 [10,15,…], 스모크 예외 0). 유일한 실패 모드는 **반쯤 적용된 편집**(register는 N인데 whitelist에 N 부재 → renderer "계약 외 레이어" 경고)이며, 이는 저장 레이스 중간 상태로 자기수렴한다. **최종 프리즈 시점에 register-arg ∈ whitelist 일관성 1줄 grep만 확인하면 충분**(전체 스모크 재실행 불요).
+
+현 스냅샷(18:06): register=18 ∈ whitelist[10,15,18,20,30,40] — 무모순, GREEN. #7 v5 QA 최종 판정 GREEN 유지. P3 관찰 2건 종결(① import 경로 architect 정정 요청됨, ② 시체 레이어는 헤더·구현·화이트리스트가 같은 값으로 수렴하기만 하면 정합 — 값 자체는 계약 선택).
+
+## [검증 회차 54] 시체 레이어 **최종 수렴** — mtime 검인 재검증(계약 LOCK) — 2026-07-19
+
+계약이 15↔18 왕복 끝에 **레이어 15로 LOCK**(main.js:42 "v5.0-c LOCK"). team-lead 지시대로 통지 수신 후 **파일 mtime까지 확인하고** 판정. 스냅샷·스모크 전후 mtime 동일(main.js 18:10:49·renderer.js 18:10:37) — read/smoke 중 트리 변동 0.
+
+| # | 항목 | 결과 | 확인 방법(mtime 검인) |
+|---|---|---|---|
+| 1 | 문법 | **PASS** | `node --check` renderer.js·main.js OK |
+| 2 | register↔whitelist 정합 | **PASS** | main.js:295 `registerLayer(15, drawCorpses)`, renderer.js:21 `LAYER_ORDERS=[10,15,20,30,40]` → 15 ∈ whitelist(무모순). **src 전체 18 잔재 0**(`grep -rn "registerLayer(18\|LAYER_ORDERS.*18\|레이어 18" src` 빈 출력) → "계약 외 레이어" 경고 미발생 |
+| 3 | 등록 순서(occlusion) | **PASS** | 레이어15 순서 291 terrainAnim→292 waterGlint→295 corpse→(296) entities(20). 시체 < 라이브 엔티티 유지 |
+| 4 | fx/tween.js 주석 정합 | **PASS** | fx-dev가 drawCorpses 헤더를 **레이어 무관**으로 개선(tween.js:335–336 "정확한 레이어 번호는 계약·renderer 화이트리스트가 단일 출처 — drawCorpses는 레이어 무관"). 하드코딩 레이어값 제거 → 핑퐁 재발 구조적 차단. P3 ② 근본 해소 |
+| 5 | sim | **PASS** | `node scripts/sim.mjs` exit 0(48) — main·renderer는 sim 그래프 밖 |
+| 6 | 부팅 스모크(mtime 브래킷) | **PASS** | 진짜 TD 서버(8241, `<title>크리스탈 가드</title>`)+CDP: 건설(popIn)→웨이브(적 popIn)→enemy:killed(시체 deathOut 레이어15)→playing↔stage-select(pauseAll/resumeAll) 전 경로 콘솔 **error/warn/exception 0·"레이어 15 draw 예외" 0·"계약 외 레이어" 0**. 스모크 전후 mtime 동일(트리 안정) |
+
+**회차 54 = GREEN(최종·mtime 검인).** 현 트리 = 레이어 15 수렴·무모순. fx/tween.js 주석이 레이어 무관화되어 P3 ② 근본 해소(값이 어디로 확정돼도 주석 스테일 불가). #7 v5 QA **최종 마감 = GREEN**. 향후 레이어값이 재변경돼도 불변식(register-arg ∈ whitelist + draw 예외 0)만 유지되면 GREEN — 1줄 grep 확인으로 충분.
+
+**[프리즈 검인] architect가 시체 레이어를 15로 LOCK 확정(과거 "18" 명시 철회), engine-dev "이후 코드 변경 없음" 확약, team-lead 독립 실측 일치.** 불변식 1줄 확인: `registerLayer(15, drawCorpses)` ∈ `LAYER_ORDERS=[10,15,20,30,40]` — 무모순, src 전체 18 잔재 0. **mtime 회차 54와 동일**(main.js 18:10:49·renderer.js 18:10:37 — 회차 54가 스모크한 그 트리에서 변동 0) → 회차 54 스모크 결과 그대로 유효. node --check OK·sim exit 0. **v5 QA 게이트(#7) 전건 종결 = GREEN. 잔여 = playtester #8뿐.**
+
+## [검증 회차 55] playtester P1 수정 델타 — tween.js cancelChannels orphan 채널 정착 — 2026-07-19
+
+**P1(playtester 발견):** popIn 승계 시 orphan 채널 alpha 방치 → 타워 영구 투명. fx-dev가 `cancelChannels`에서 승계 취소되는 트윈의 **미겹침(orphan) 채널만** 해당 트윈 finalState로 정착하도록 수정(태스크 #10). 프리셋 로직 무변. (현 워킹트리, tween.js mtime 18:41:52)
+
+| # | 항목 | 결과 | 확인 방법 |
+|---|---|---|---|
+| 1 | 문법 | **PASS** | `node --check src/fx/tween.js` OK |
+| 2 | §17.4 8 시그니처 불변 | **PASS** | popIn/deathOut/punch/recoil/shake/pauseAll/resumeAll/killTweens 전부(line 161–260) |
+| 3 | vis write 6필드 이내 | **PASS** | sx/sy/rot/alpha/ox/oy만 write. grep이 잡은 `.x/.y/.angle=`는 시체 개체 c.x/c.y/c.angle(spawnCorpse:314–315)로 vis 아님 |
+| 4 | sim | **PASS** | `node scripts/sim.mjs` exit 0(48) |
+| 5 | 수정 로직 정확성 | **PASS** | `cancelChannels`: `for key of rec.channels: if !channels.includes(key) && key in rec.finalState → vis[key]=finalState[key]`. incoming이 안 가져가는 orphan 채널만 finalState로 정착. 예: punch(sx,sy)가 popIn(sx,sy,alpha) 승계 → alpha=1 정착(타워 투명 해소), sx,sy는 punch가 이어받아 정착 제외(이중 정착 없음). 채널 핸드오프 로직 보존 |
+
+**회차 55 = GREEN.** P1 근본 수정 확인(orphan 채널 stuck-value → finalState 정착).
+
+**[회차 55-보강] ②onDone 발화 추가(cancelChannels, tween.js mtime 18:46:38) 재검증 — GREEN.** fx-dev가 회차 55 최초 검증(mtime 18:41, ①만) 이후 ②를 추가: 승계 취소되는 트윈의 `onDone`을 발화(시체 vis가 승계되는 변종에서 시체 방치 방지). **이중발화 안전 확인:** ⓐ settle()·settleImmediate()·cancelChannels() 모두 onDone 발화하나 `rec.done` 가드+active splice로 각 rec onDone 최대 1회(settle 진입 `if(rec.done) return`) ⓑ onDone은 deathOut만 non-null(popIn/punch/recoil/shake는 track에 null) → cancelChannels 발화는 시체 제거만 영향 ⓒ killTweens는 onDone 미발화(터미널 리셋) → 시체 슬롯 재사용(spawnCorpse: killTweens→c.active=true→deathOut) 시 옛 onDone이 새 시체 안 끔. node --check OK·sim exit 0·8 시그니처 불변. **①+② 둘 다 정확·안전, P1 근본 수정 최종 GREEN.** 시나리오 체감은 playtester #8. #7 v5 QA 최종 마감 GREEN 유지.
+
+## [검증 회차 56] playtester P2 수정 델타 — 스테이지2~5 잔디 패치워크(#11, asset-artist) — 2026-07-19
+
+**P2(playtester 발견):** 스테이지2~5(tint 적용)에서 잔디 패치워크 — clover/flower가 필드에서 밝게 튐. 근본 원인은 tint가 아니라 flower/clover의 **밝기·채도 분포**(평균색 ΔE 2.5인데 필드에서 밝게 튐 = 평균 지표의 사각). asset-artist가 whole-tile 분포 매칭으로 보정.
+
+| # | 항목 | 결과 | 확인 방법 |
+|---|---|---|---|
+| 1 | 잔디 --check | **PASS** | `harmonize_palette.py --check` exit 0: clover 13.6→**1.6**·flower 7.0→**1.4**(임계18) |
+| 2 | 필드 perceptual 재계측 | **PASS** | `_workspace/tools/grass_lab.py after`: Lab ΔE 전 5스테이지(tint 시뮬 포함) clover 0.8~1.0·flower 0.5 — **전부 JND(~2.3) 미만**, tint multiply로도 증폭 안 됨. 몽타주 `03_grassfield_stage2tint_after.png` 육안: 잔디 균일·**패치워크(밝은 패치) 소멸** |
+| 3 | 규격·키·경로·매니페스트 | **PASS** | 256² 유지, keys(tile_grass/_clover/_flower)·경로 불변, manifest.js 무변경(git status clean) |
+| 4 | 전이 타일 부작용 | **PASS** | `tile_seam_check.py` "전 항목 PASS: True"(path6+water_edge+dirt_edge grass여백≤16.2·재질≤11.8) — 회차47과 동일, 잔디 보정이 전이 지표 안 건드림 |
+
+**관찰(P3, #11 회귀 아님) — 종결(현상 유지):** 잔디 3종 RGB(RGBA 아님). **HEAD 커밋본·미변경 앵커 tile_grass도 RGB** → #11이 alpha 드롭한 게 아니라 잔디 패밀리 v4 기존 포맷. edge 타일(RGBA)과 혼재하나 지형은 불투명·로더가 RGB/RGBA 모두 처리라 렌더 무해. **team-lead 판단(2026-07-19): 선재·무해·의도적 방치 — RGBA 통일 작업 안 함.** #11 포맷 회귀 없음.
+
+**회차 56 = GREEN.** P2 근본 수정 확인(밝기·채도 분포 매칭 → 필드 패치워크 소멸, ΔE JND 미만, 전이 타일 무영향). 평균색 지표의 사각을 whole-tile 분포로 보완한 정확한 진단.

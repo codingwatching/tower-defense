@@ -33,7 +33,13 @@
  *      wave:cleared / lives:changed — 승패 판정
  *      wave:started / enemy:killed — 승패 페이로드용 통계(waveReached·kills·total) 집계 (읽기 전용)
  * 발행: stage:started {stageIndex, stageId} / game:started {} /
- *      game:won {kills, livesLeft} / game:over {waveReached, kills}
+ *      game:won {kills, livesLeft, goldLeft} / game:over {waveReached, kills}
+ *
+ * (v5 §17.5·§17.4) 절차적 트윈 연동 — main→fx/tween 파사드 제어(sanctioned, main→loop.setSpeed와 동형):
+ *   · 일시정지: 'playing' 이탈(victory/defeat/stage-select) 직후 pauseAll(), 진입 직전(game:started 리셋 전) resumeAll().
+ *     트윈은 rAF 독립 엔진이라 update가 게이트로 멈춘 오버레이 화면에서 vis가 드리프트 — 이를 막는다.
+ *   · 파사드 조립: initTween()(트리거 구독 배선, safeInit) + updateCorpses(dt)(시체 TTL 안전망, fx update와 동렬) +
+ *     drawCorpses(계약 레이어 15 공동 등록, terrainAnim→waterGlint→corpse 순 — §17.4 v5.0-c LOCK). tween.js 헤더 계약대로 main이 1회 배선.
  *
  * 디버그 훅 (제거 금지 — playtester/qa의 유일한 내부 접근 통로): window.GAME
  */
@@ -66,6 +72,9 @@ import { initParticles, updateParticles, drawParticles } from './fx/particles.js
 import { initFloaters, updateFloaters, drawFloaters } from './fx/floaters.js';
 import { initFlashes, updateFlashes, drawFlashes } from './fx/flashes.js';
 import { initWaterGlint, drawWaterGlint } from './fx/glint.js'; // (v4 §16.3) 물 글린트 — 레이어 15 공동 등록
+// (v5 §17.4·§17.5) 절차적 트윈 파사드 — main이 직접 import하는 유일한 fx 제어 창구(anime 엔진은 파사드 뒤에 은닉).
+// §17.2 경계 게이트 무관: main은 파사드('./fx/tween.js')만 import하고 anime 벤더 파일은 직접 import하지 않는다.
+import { pauseAll, resumeAll, initTween, updateCorpses, drawCorpses } from './fx/tween.js';
 
 import { initSound } from './audio/sound.js';
 
@@ -140,6 +149,7 @@ function initWinLoseDetection() {
     const total = waveTotal > 0 ? waveTotal : WAVES.length; // 데이터 우선, 캐시 부재 시 폴백
     if (total > 0 && p.index >= total) {
       state = 'victory';
+      pauseAll(); // (v5 §17.5) 'playing' 이탈 직후 — 오버레이 동안 게임플레이 vis 트윈 정지(파사드 추적분만; UI 트랜지션은 무영향)
       // (v3.1) goldLeft = 잔여 골드(종합 점수 4번째 요소). livesLeft=getLives()와 동형 경로.
       emit('game:won', { kills: run.kills, livesLeft: getLives(), goldLeft: getGold() });
     }
@@ -149,6 +159,7 @@ function initWinLoseDetection() {
     if (state !== 'playing') return;
     if (p.lives <= 0) {
       state = 'defeat';
+      pauseAll(); // (v5 §17.5) 'playing' 이탈 직후 — 게임플레이 vis 트윈 정지
       emit('game:over', { waveReached: run.wave, kills: run.kills });
     }
   });
@@ -157,7 +168,9 @@ function initWinLoseDetection() {
 /** 타이틀·결과·게임중 → 스테이지 선택. 진행 중이던 판은 포기(점수 미확정 — §14.1). */
 function goStageSelect() {
   if (state === 'loading') return;
+  const wasPlaying = state === 'playing'; // (v5 §17.5) 게임중 나가기만 트윈 정지 대상 — 타이틀/결과 이탈은 이미 정지 or 무관
   state = 'stage-select';
+  if (wasPlaying) pauseAll();
 }
 
 /**
@@ -188,6 +201,8 @@ function enterStage(idx) {
 
   // 컨텍스트 브로드캐스트 — game:started보다 먼저(§14.1). stageId는 economy/waves/score/ui가 소비.
   emit('stage:started', { stageIndex: idx, stageId: level.id });
+  // (v5 §17.5) 'playing' 진입 — game:started 리셋 직전 트윈 엔진 재개(직전 오버레이 이탈 시 pauseAll된 것 복원).
+  resumeAll();
   // 기존 리셋 신호(불변) — economy/combat/waves/score/fx/ui가 전 상태를 리셋.
   emit('game:started', {});
 }
@@ -199,6 +214,7 @@ const fxUpdaters = [
   ['fx/particles', updateParticles],
   ['fx/floaters', updateFloaters],
   ['fx/flashes', updateFlashes],
+  ['fx/tween-corpses', updateCorpses], // (v5 §17.4) 시체 TTL 안전망 — 트윈 유실 대비 게임 시간 회수. getAnim 미호출(headless-safe·draw 전유 불변식).
 ];
 const deadFx = new Set();
 
@@ -267,12 +283,16 @@ async function bootstrap() {
   safeInit('fx/floaters', initFloaters);
   safeInit('fx/flashes', initFlashes);
   safeInit('fx/glint', initWaterGlint); // (v4 §16.3) 물 글린트 stage:started 구독
+  safeInit('fx/tween', initTween); // (v5 §17.4) 트윈 파사드 트리거 구독 배선 — 없으면 popIn/punch/recoil/deathOut 전부 무동작(§1 격리)
   safeInit('audio/sound', initSound);
 
   // 렌더 레이어 (계약 §8·§16.3) — 동일 order는 등록 순서대로 호출됨
   registerLayer(10, drawBackground);
   registerLayer(15, drawTerrainAnim); // (v4 §16.3) terrain-anim: goal_crystal_anim(전 5맵) + animDecos — 배경 캐시 제외분 애니 draw
   registerLayer(15, drawWaterGlint);  // (v4 §16.3) 물 글린트 — 지형 애니 '다음'에 등록해 물 표면 위에 올라감(등록 순서대로 호출)
+  // (v5 §17.4 v5.0-c) 적 사망 페이드 시체 — 레이어 15 공동 등록(architect 최종 LOCK). 등록 순서 terrainAnim → waterGlint → corpse는
+  // 계약 명문(§17.4): 시체가 지형 애니 위에 그려짐. 라이브 엔티티(20) 아래라 신규 적이 시체를 덮어그리고, 셰이크 임계 이하라 월드와 동조.
+  registerLayer(15, drawCorpses);
   registerLayer(20, drawEntities);
   registerLayer(30, drawParticles);
   registerLayer(30, drawFloaters);

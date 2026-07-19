@@ -29,6 +29,7 @@ model: opus
 3. `src/entities/projectile.js` — 유도/직선 투사체, 명중 판정, 스플래시 데미지
 4. `src/systems/combat.js` — 엔티티 컬렉션 관리, 충돌/명중 파이프라인
 5. **애니메이션 상태 머신 (v3)** — 타워 `idle` 루프 + 발사 시 `attack` one-shot 후 복귀, 적 `walk`(슬로우 시 fps 비례), 위상 랜덤 오프셋. 레벨업 시 구/신 스프라이트 크로스페이드+스케일 펀치 (td-code-standards "엔티티 애니메이션 상태 머신"·"진화 변신 연출" 규약 — 연출 중에도 전투는 즉시 신규 수치로 동작)
+6. **vis 시각 상태 계약 (v5)** — 생성자에서 `this.vis = {sx,sy,rot,alpha,ox,oy}` 초기화, `draw()`는 변환 반영만. 트윈(값 변경)은 fx의 tween 파사드가 이벤트 구독으로 수행 — **entity는 anime.js를 import하지 않고, update()는 vis를 읽지도 쓰지도 않는다** (헤드리스 sim.mjs 안전, td-code-standards "절차적 트윈 규약")
 
 ## 작업 원칙
 

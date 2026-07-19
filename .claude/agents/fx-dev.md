@@ -31,6 +31,7 @@ model: opus
 5. **타워 시그니처 이펙트 (v3)** — 타워 타입별로 구별되는 특수 공격 연출(예: 프로스트 노바 링, 아케인 버스트, 캐논 충격파). 그라디언트·다층 글로우·additive 합성으로 도형만으로 고급 질감을 낸다
 6. **진화 변신 연출 (v3)** — `tower:upgraded` 구독으로 광기둥+상승 파티클 버스트 (entity의 크로스페이드와 협연, 화면 셰이크 금지 — td-code-standards "진화 변신 연출" 규약)
 7. **지형 앰비언트 (v3)** — 물 글린트 등 면 단위 지형 반짝임을 terrain-anim 레이어에 코드 오버레이로 (맵당 소수, 유닛 가독성 우선)
+8. **트윈 파사드 (v5)** — `src/fx/tween.js` 소유: anime.js 벤더(`vendor/anime.esm.min.js`) import의 유일한 게임 측 창구(+ src/ui). 연출 프리셋(popIn/deathOut/punch/recoil/shake)·`pauseAll/resumeAll`·`killTweens` 제공, 이징 톤 통일. td-code-standards "절차적 트윈 규약" 엄수 — 트윈은 시각 상태(vis)만, entities/systems에 anime import 유입 금지
 
 ## 작업 원칙
 

@@ -25,6 +25,7 @@ import { WAVES } from '../data/waves.js';
 import { isUnlocked } from '../systems/progress.js';
 // LEVELS 개수(다음 스테이지 존재 판정)만 안전 접근 — map-designer WIP 대비 namespace import.
 import * as levelsData from '../data/levels.js';
+import { fadeInScreen, fadeOutScreen, countUp } from './anim.js';
 
 let titleEl, victoryEl, defeatEl;
 let victoryStatsEl, defeatStatsEl;
@@ -36,6 +37,8 @@ let lastFinalized = null;
 let lastRecord = null;
 /** stage:started로 캐시한 현재 스테이지 인덱스 — 다음 스테이지 버튼 근거(finalized 부재 시 폴백). */
 let currentStageIndex = 0;
+/** (v5) 결과 화면 "최종 점수" 헤드라인 카운트업 상태 — 표시 전용(값은 score:finalized 캐시가 진실). */
+const totalCounter = { shown: 0, tween: null };
 
 function fmt(v) {
   return Number.isFinite(v) ? String(v) : '?';
@@ -54,14 +57,18 @@ function totalStages() {
   return levelsData.LEVEL ? 1 : 0;
 }
 
+// (v5) 화면 전환 페이드 — 대상은 페이드 인, 나머지는 페이드 아웃 후 .hidden(트윈 실패해도 즉시 확정).
+// 종료 상태(대상만 표시)는 fadeInScreen(.hidden 해제)/fadeOutScreen(.hidden 부착)이 그대로 보존.
 function showOnly(target) {
   for (const el of [titleEl, victoryEl, defeatEl]) {
-    if (el) el.classList.toggle('hidden', el !== target);
+    if (!el) continue;
+    if (el === target) fadeInScreen(el);
+    else fadeOutScreen(el);
   }
 }
 
 function hideAll() {
-  for (const el of [titleEl, victoryEl, defeatEl]) if (el) el.classList.add('hidden');
+  for (const el of [titleEl, victoryEl, defeatEl]) fadeOutScreen(el);
 }
 
 function injectBody(screenEl, beforeNode, html) {
@@ -111,6 +118,15 @@ function renderScorePanel(panelEl, outcome) {
     `<div class="score-best">이 스테이지 최고기록 <b>${fmtScore(best)}</b></div>` +
     (isNewBest ? `<div class="new-record">🏆 신기록!</div>` : '');
   panelEl.classList.add('has-record');
+
+  // (v5) "최종 점수" 헤드라인 0→total 카운트업(outCubic). 표시 전용 — 값은 f.total(캐시)가 진실.
+  // innerHTML이 이미 total을 넣었으므로 0으로 되돌린 뒤 롤업(전체값 깜빡임 방지). NaN 방어는 countUp 내부.
+  const totalEl = panelEl.querySelector('.score-total-value');
+  if (totalEl) {
+    totalCounter.shown = 0;
+    totalEl.textContent = fmtScore(0);
+    countUp(totalEl, totalCounter, total, fmtScore);
+  }
 }
 
 /**

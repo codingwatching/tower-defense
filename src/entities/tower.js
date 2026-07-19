@@ -21,9 +21,17 @@
  *   getAnim/fps·프레임수 조회는 draw가 전유한다(§10 update/draw 분리). headless sim은 draw를
  *   부르지 않으므로 update 경로의 로더 호출은 금지 — 위반 시 makePlaceholder에서 크래시(D35-1).
  *   개체별 위상 랜덤 오프셋(animPhase)으로 같은 타워 다수의 동기 맥동 방지.
- * - 진화 변신: upgrade() 순간 크로스페이드(구 레벨 idle 0프레임 ↔ 신 레벨 시퀀스, EVOLVE_DURATION)
- *   + 스케일 펀치(1.0→1.15→1.0). 전투 수치는 즉시 신규 레벨 — 연출은 시각 전용(AC-54).
+ * - 진화 변신: upgrade() 순간 2-스프라이트 크로스페이드(구 레벨 idle 0프레임 ↔ 신 레벨 시퀀스,
+ *   EVOLVE_DURATION). 전투 수치는 즉시 신규 레벨 — 연출은 시각 전용(AC-54).
  * - 발사 시 projectile 스펙에 towerType 실기(§16.5) — combat이 projectile:hit 페이로드로 전달.
+ *
+ * v5 (§17.3 vis 계약·진화 재분담):
+ * - vis = {sx,sy,rot,alpha,ox,oy} 시각 상태를 생성자에서 identity로 초기화. draw는 이를 변환에
+ *   반영만 하고, update는 vis를 읽지도 쓰지도 않는다(불변식 2 — headless sim은 vis 초기값 그대로).
+ *   vis 값 트윈은 fx(tween 파사드)가 이벤트 구독으로 write한다(계약 인터페이스, 소유권 위반 아님).
+ * - 진화 스케일 펀치(1.0→1.15→1.0)는 fx `punch(tower.vis)`(tower:upgraded 구독)로 이관 —
+ *   entity의 inline sin 스케일 계산·EVOLVE_SCALE_PEAK 상수는 삭제, draw는 vis.sx/sy만 반영.
+ *   2-스프라이트 크로스페이드는 entity 전유(존치) — vis 단일 alpha로 두 스프라이트 블렌드 표현 불가.
  */
 
 import { TOWERS } from '../data/towers.js';
@@ -38,8 +46,9 @@ const PIP_RADIUS = 3;
 const PIP_SPACING = 9;
 
 // v4 진화 변신 연출 상수 (§16.6 — 밸런스 수치 아님. playtester 피드백에 즉시 조정 가능하도록 모듈 상단 격리)
-const EVOLVE_DURATION = 0.4;    // 구/신 스프라이트 크로스페이드·스케일 펀치 지속 (초)
-const EVOLVE_SCALE_PEAK = 1.15; // 스케일 펀치 정점 배율 (1.0 → 1.15 → 1.0)
+// v5(§17.3 재분담): 스케일 펀치는 fx punch(tower.vis)로 이관 — EVOLVE_SCALE_PEAK 삭제.
+//   EVOLVE_DURATION은 2-스프라이트 크로스페이드(entity 전유) 타이밍으로 존치.
+const EVOLVE_DURATION = 0.4;    // 구/신 스프라이트 크로스페이드 지속 (초)
 
 const MAX_LEVEL = 3;
 
@@ -116,11 +125,16 @@ export class Tower {
     /** idle 위상 랜덤 오프셋(초) — 같은 타워 다수가 동기 맥동하지 않도록 디싱크 (§10). */
     this.animPhase = Math.random() * 1000;
 
-    // v4 진화 변신 연출 (§16.6) — upgrade()가 트리거, draw가 크로스페이드·스케일 펀치를 그린다.
-    /** >0이면 진화 연출 진행 중 (초, update에서 감소). */
+    // v4 진화 변신 연출 (§16.6) — upgrade()가 트리거, draw가 2-스프라이트 크로스페이드를 그린다.
+    //   스케일 펀치는 v5에서 fx punch(vis)로 이관(§17.3) — 여기선 크로스페이드 타이머만 관리.
+    /** >0이면 진화 크로스페이드 진행 중 (초, update에서 감소). */
     this.evolveTimer = 0;
     /** 크로스페이드로 페이드아웃할 구 레벨 (0 = 연출 없음). */
     this.evolvePrevLevel = 0;
+
+    // v5 시각 상태 계약(§17.3) — identity 초기화. draw가 변환에 반영만, update는 불가지.
+    //   fx(tween 파사드)가 이벤트 구독으로 이 필드를 트윈한다(fx에 개방된 계약 인터페이스).
+    this.vis = { sx: 1, sy: 1, rot: 0, alpha: 1, ox: 0, oy: 0 };
   }
 
   /** @returns {{cost:number, damage:number, range:number, cooldown:number}} 현재 레벨 수치 (+선택 오버라이드 필드) */
@@ -267,36 +281,46 @@ export class Tower {
   }
 
   /**
-   * (v4 §16.2·§16.6) 상태 머신 스프라이트 draw — getAnim으로 idle 루프/attack one-shot 프레임 크롭.
+   * (v4 §16.2·§16.6 · v5 §17.3) 상태 머신 스프라이트 draw — getAnim으로 idle 루프/attack one-shot 크롭.
    * 시퀀스 판정(attack 경과 vs idle 복귀)은 animClock/attackStart를 **읽어** 여기서 파생한다 —
    * draw는 상태를 바꾸지 않고, getAnim은 draw 전유(§10 update/draw 분리). headless sim은 draw를
    * 부르지 않으므로 로더가 update 핫패스에서 크래시하지 않는다(D35-1 회귀 방지).
-   * 진화 연출 중이면 구 레벨 idle 0프레임 ↔ 신 레벨 시퀀스 크로스페이드 + 스케일 펀치.
+   * v5: vis(sx/sy/rot/alpha/ox/oy)를 변환에 반영만 한다(§17.3 draw 적용 규칙) — 진화 스케일 펀치는
+   *   이제 fx가 vis.sx/sy로 트윈한다(inline 계산 삭제). 진화 크로스페이드(구 idle 0프레임 ↔ 신 시퀀스)는
+   *   entity 전유로 존치 — vis 단일 alpha와 곱셈 합성한다(§17.3 alpha 규칙).
    * @param {CanvasRenderingContext2D} ctx
    */
   draw(ctx) {
+    const vis = this.vis;
     const evolving = this.evolveTimer > 0 && this.evolvePrevLevel > 0;
-    // 연출 진행도 0→1. 스케일 펀치는 sin(πt)로 t=0.5에서 정점 → 1.0 → 1.15 → 1.0.
+    // 크로스페이드 진행도 0→1 (구 스프라이트 페이드아웃, 신 스프라이트 페이드인).
     const t = evolving ? 1 - this.evolveTimer / EVOLVE_DURATION : 1;
-    const scale = evolving ? 1 + (EVOLVE_SCALE_PEAK - 1) * Math.sin(t * Math.PI) : 1;
-    const size = TOWER_DRAW_SIZE * scale;
+    const size = TOWER_DRAW_SIZE; // 스케일 펀치는 vis.sx/sy(fx punch)로 대체 — §17.3 재분담
 
     // 신 스프라이트 = 현재 레벨의 상태 머신 프레임(idle 루프 / attack one-shot).
     const cur = this._frameOf(this.level, false);
+
+    // §17.3 draw 적용 규칙: translate(ox/oy) → scale(sx/sy) → rotate(rot) → globalAlpha*=alpha.
+    //   타워는 진행각이 없으므로 rotate(vis.rot)만. 스프라이트는 원점(0,0) 중심에 그린다.
+    ctx.save();
+    ctx.translate(this.x + vis.ox, this.y + vis.oy);
+    ctx.scale(vis.sx, vis.sy);
+    ctx.rotate(vis.rot);
+    ctx.globalAlpha *= vis.alpha;
     if (evolving) {
-      // 구 스프라이트 = 이전 레벨 idle 0프레임(정적) — 페이드아웃, 신 스프라이트 페이드인 (§16.6).
+      // 구 스프라이트 = 이전 레벨 idle 0프레임(정적). 크로스페이드 alpha는 vis.alpha와 곱셈 합성(§17.3).
       const prev = this._frameOf(this.evolvePrevLevel, true);
-      ctx.save();
-      ctx.globalAlpha = 1 - t;
+      const baseAlpha = ctx.globalAlpha;
+      ctx.globalAlpha = baseAlpha * (1 - t);
       this._blit(ctx, prev, size);
-      ctx.globalAlpha = t;
+      ctx.globalAlpha = baseAlpha * t;
       this._blit(ctx, cur, size);
-      ctx.restore();
     } else {
       this._blit(ctx, cur, size);
     }
+    ctx.restore();
 
-    // 레벨 배지: 타일 하단 중앙에 금색 핍 level개 (스케일 펀치 비적용 — 가독성 유지)
+    // 레벨 배지: 타일 하단 중앙에 금색 핍 level개. vis 변환 밖(절대 좌표) — 펀치·회전 비적용(가독성 유지).
     const pipY = this.y + TOWER_DRAW_SIZE / 2 - PIP_RADIUS - 2;
     const startX = this.x - ((this.level - 1) * PIP_SPACING) / 2;
     for (let i = 0; i < this.level; i++) {
@@ -355,11 +379,11 @@ export class Tower {
     };
   }
 
-  /** 크롭 프레임을 타워 중심에 size×size로 그림 (진화 스케일 펀치 반영). */
+  /** 크롭 프레임을 원점(0,0) 중심에 size×size로 그림 — vis 변환(translate/scale/rotate)은 draw가 건다. */
   _blit(ctx, f, size) {
     ctx.drawImage(
       f.image, f.sx, f.sy, f.frameW, f.frameH,
-      this.x - size / 2, this.y - size / 2, size, size
+      -size / 2, -size / 2, size, size
     );
   }
 }

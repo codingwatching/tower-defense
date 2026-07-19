@@ -2,3 +2,5 @@
 Thumbs.db
 *.log
 gameplay.mov
+__pycache__/
+*.pyc

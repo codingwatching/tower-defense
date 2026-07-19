@@ -7,16 +7,18 @@
  * 표시 크기는 전적으로 CSS 소관 — #game-canvas { width:100%; height:auto } (ui-dev, §11).
  *
  * 레이어 순서(order 오름차순 호출):
- *   10 = 배경(map/tilemap) / 15 = terrain-anim(움직이는 지형 장식) / 20 = 엔티티(타워→적→투사체) /
- *   30 = fx / 40 = 캔버스 UI(고스트·사거리 원)
+ *   10 = 배경(map/tilemap) / 15 = terrain-anim(움직이는 지형 장식) + 시체 페이드(fx 소유) /
+ *   20 = 엔티티(타워→적→투사체) / 30 = fx / 40 = 캔버스 UI(고스트·사거리 원)
  * (v4, §16.3) 레이어 15 = terrain-anim: 배경 캐시(10) 위, 엔티티(20) 아래. tilemap(장식 애니)과
  *   fx(물 글린트)가 공동 등록(복수 drawFn 허용). 15 ≤ SHAKE_MAX_ORDER(30)이므로 월드와 함께 셰이크됨(의도).
+ * (v5, §17.4 v5.0-c) 시체 페이드(fx/tween drawCorpses)도 레이어 15 공동 등록 — 등록 순서 terrainAnim →
+ *   waterGlint → corpse(§17.4 명문). 엔티티(20) 아래라 라이브 적이 시체를 가리는 occlusion 유지.
  * 카메라 오프셋(셰이크)은 order <= 30 레이어에만 적용된다 (캔버스 UI는 흔들지 않음).
  * 같은 order에 복수 drawFn 등록 가능 — 등록 순서대로 호출 (fx 3종이 30을 공유).
  * 각 drawFn은 save/restore로 감싸 호출되므로 컨텍스트 상태 누수가 다음 레이어를 오염시키지 않는다.
  */
 
-const LAYER_ORDERS = [10, 15, 20, 30, 40]; // (v4, §16.3) 15 = terrain-anim (background 위, entities 아래)
+const LAYER_ORDERS = [10, 15, 20, 30, 40]; // (v4 §16.3) 15 = terrain-anim + (v5 §17.4 v5.0-c) 시체 페이드 공동 등록 (background 위, entities 아래)
 const SHAKE_MAX_ORDER = 30;
 const MAX_DPR = 2; // §11: min(devicePixelRatio, 2)
 

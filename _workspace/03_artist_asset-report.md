@@ -244,3 +244,72 @@ frame edge to edge, straight top-down orthographic view, ..., not flat, not cel-
 | 회차 | 일시 | 내용 |
 |---|---|---|
 | 3 | 2026-07-19 | v4 51키 3D 렌더 룩 전량 재생성 (타워 12 멀티시퀀스 시트+아틀라스 / 적 정적5+걷기5 / 투사체4 / 타일 16(신규 패밀리 6 포함) / 정적장식4+오브젝트2 / terrain-anim 3 시트+아틀라스). tile_cliff/lava는 계약 v4.0-a 이중용도(비방향성 톱뷰) 반영. v1 오브펀 타워 단일 4파일 삭제. 재생성·플레이스홀더 유지 0. |
+| 4 (v5) | 2026-07-19 | 타일 팔레트 색상 일관성 보정 — 전이(2재질) 타일 8종 세그먼트 하모나이즈. 키·경로·규격 불변, 코드 변경 0. 아래 "## v5 타일 팔레트 락" 참조. |
+
+## v5 타일 팔레트 락 (색상 일관성 보정)
+
+**요구:** "타일 에셋 색상이 조금씩 다르며 일관성이 떨어진다 — 보완." (SKILL §7.5)
+
+**핵심 판단 — whole-tile 하모나이즈는 전이 타일에 부적합:** 길 방향타일(h/v/코너 4)·물가/흙가 전이 타일은 **grass + road/water/sand 2재질**이 한 셀에 공존한다(길 앵커 `tile_path.png`은 순수 흙 폴백 타일). 번들 `harmonize_palette.py`의 whole-tile 히스토그램 매칭을 이 타일에 걸면 grass 여백이 앵커(갈색)로 오염된다 — 실증: strength 0.85에서 잔디가 갈색으로 뭉개짐(scratch 검증). whole-tile `--check` 는 "PASS"(거리 39.7→5.6)로 나오지만 실제로는 더 나빠짐 = 지표만 맞추고 목적을 해치는 함정.
+
+**채택 — 세그먼트(재질별) 하모나이즈:** 픽셀을 소프트 멤버십으로 grass/비-grass 분리 → grass 픽셀은 `tile_grass` 앵커, 비-grass 픽셀은 각 패밀리 앵커(`tile_path`/`tile_dirt`, 물은 원본 유지)로 각각 채널 히스토그램 매칭 후 멤버십 가중 블렌드(경계 프린징 방지). 매칭 수학은 번들 스크립트와 동일(단조 CDF LUT). 멤버십 분리축: 따뜻한 재질=`g−r`(황토 sand는 g≈r이라 `g−(r+b)/2`로는 grass와 겹침), 물=`g−b`. 스크립트: `_workspace/tools/harmonize_segmented.py`(재질별 하모나이저), `_workspace/tools/tile_seam_check.py`(재질별 계측+몽타주 생성). 원본 백업: `assets/reference/pre_harmonize/`(8파일).
+
+**재질별 거리 보정 전→후 (동일 분류기, 임계 18):**
+
+| 타일 | grass 여백 (vs tile_grass) | 재질 (vs 패밀리앵커) | 재질앵커 | strength |
+|---|---|---|---|---|
+| tile_path_h  | 29.1 → **9.5**  | 11.0 → **3.4**  | tile_path | 0.85 |
+| tile_path_v  | 37.0 → **5.6**  | 21.1 → **3.5**  | tile_path | 0.85 |
+| tile_path_ne | 22.5 → **3.8**  | 33.2 → **5.6**  | tile_path | 0.85 |
+| tile_path_nw | 41.9 → **5.8**  | 19.1 → **3.9**  | tile_path | 0.85 |
+| tile_path_se | 26.5 → **16.2** | 28.3 → **7.8**  | tile_path | 0.92 (ramp −8/4 재보정)¹ |
+| tile_path_sw | 35.1 → **7.8**  | 14.1 → **5.5**  | tile_path | 0.85 |
+| tile_water_edge | 23.9 → **7.2** | 12.7 → **11.8** | tile_water(물 부분 원본 유지) | 0.85 |
+| tile_dirt_edge  | 24.5 → **8.4** | 26.8 → **4.7**  | tile_dirt  | 0.85 |
+
+¹ tile_se 는 잔디가 가장 올리브(=`g−r` 낮음)라 기본 램프(−2/10)에서 grass 여백 22.9 잔존(loop 몽타주 상 top-left 타일이 육안으로 어두움). 백업 원본에서 램프 −8/4·strength 0.92로 재보정 → 16.2 PASS·육안 균질.
+
+**잔디 패밀리(단일재질) — 보정 불필요(사전 PASS 유지):** whole-tile `--check` 그대로 인용 —
+`tile_grass_clover 13.6 PASS / tile_grass_flower 7.0 PASS` (exit 0).
+
+**완료 검수 (최종 저장 직후 재실행):**
+- 세그먼트 재질별 `--check`(현재 저장 파일 기준): grass 여백 8종 전부 ≤16.2, 재질 8종 전부 ≤11.8 → **전 항목 PASS: True**.
+- 참고 — 번들 whole-tile `--check` 는 전이(2재질) 타일에 대해 여전히 FAIL(예: path_ne 45.2)이며 이는 **구조적 한계**다(2재질 평균색은 단일재질 앵커와 원리상 불일치, grass를 올바르게 더 초록으로 만들수록 거리는 오히려 증가). 전이 타일의 유효 지표는 세그먼트 재질별 거리이며 위에서 전 항목 PASS.
+- 교차 seam 몽타주(`_workspace/`): `03_tilecheck_seams.png`(grass|path_v|grass, grass/path_h/grass, grass/water_edge/water, grass/dirt_edge/dirt), `03_tilecheck_path_family.png`(길 6종 나란히), `03_tilecheck_path_loop.png`(닫힌 흙 트랙 3×3) — 육안: 잔디 패치워크 해소·도로 톤 균질·경계 프린징 없음.
+
+**범위 밖:** `tile_cliff`·`tile_lava`(패밀리 없는 독립 지형 타일, 비교 앵커 없음), `deco_*`(타일 위 개체 — §7.5 히스토그램 보정 비대상). 매니페스트 키·파일명·경로·규격(256² RGBA, 알파 255 보존) 전부 불변 — engine 로더 코드 변경 불요.
+
+## v5.1 잔디 변형 패치워크 보정 (플레이테스트 후속)
+
+**요구(P2, playtester):** 스테이지 2~5 잔디에 밝은 변형 타일이 패치워크로 튐(스테이지1은 우수). v5 본편은 전이 타일만 다뤘고 잔디 변형(clover/flower)은 whole-tile RGB `--check` PASS(13.6/7.0<18)라 손대지 않았다 — 그런데 실플레이에서 튐이 잔존.
+
+**근본 원인 — 평균색 지표가 놓친 "밝기·채도 캐릭터":** `tile_grass_flower`는 RGB 평균이 기본 잔디와 거의 동일(ΔE 2.5)한데도 필드에서 밝은 연두 블록으로 튄다. 밝은 잔디날·꽃 반점의 고주파 밝기 분포가 타일 전체를 밝게 읽히게 하기 때문 — **평균색(RGB `--check`·Lab ΔE of means) 지표는 원리상 이걸 못 잡는다.** 실제 해시 배치(tilemap.js `grassTileKey` 재현) 필드 몽타주로 재현 확인. 스테이지별 tint는 multiply(채널 상수배)라 차이를 오히려 축소하며(수학), 실제로 tint 최약 스테이지2(alpha 0.12)가 최심·tint 최강 스테이지5(0.32)가 덜함 → **tint는 원인 아님.** playtester의 maxΔE 45는 잔디 위 장식 스프라이트가 셀 평균을 오염시킨 outlier(본인 주의사항과 일치)로, 잔디 타일 색편차가 아님.
+
+**보정 — 분포 매칭(whole-tile 히스토그램):** clover/flower는 단일재질 잔디라 번들 `harmonize_palette.py`가 정확한 도구. 평균이 아닌 **채널 분포 전체**를 앵커에 매칭해 밝기·채도 캐릭터를 정렬(strength 0.85). clover 잎·flower 반점은 미세 텍스처로 잔존(60/25/15 변형 다양성 유지) — 밝기 튐만 제거.
+
+| 타일 | RGB `--check` 전→후 | perceptual ΔE(원색) 전→후 | strength |
+|---|---|---|---|
+| tile_grass_clover | 13.6 → **1.6** | 6.8 → **1.0** | 0.85 |
+| tile_grass_flower | 7.0 → **1.4** | 2.5 → **0.5** | 0.85 |
+
+- perceptual ΔE는 5개 스테이지 tint 전부에서 clover ≤1.0·flower ≤0.5(전 스테이지 JND 미만).
+- **완료 검수:** 잔디 패밀리 whole-tile `--check`(단일재질=유효 지표) clover 1.6 / flower 1.4 PASS, exit 0. 필드 몽타주 `_workspace/03_grassfield_{notint,stage2tint}_{before,after}.png` 육안: before 밝은 블록 다수 → after 균질(튐 소멸, 미세 변형 유지).
+- 규격 유지: harmonize가 RGB→RGBA로 바꾼 것을 다시 RGB로 환원(기본 잔디·패밀리 관례와 동일, 256² 불투명). 키·경로·매니페스트 불변, 코드 변경 0. 원본 백업 `assets/reference/pre_harmonize/tile_grass_{clover,flower}.png`.
+- 계측·몽타주 도구: `_workspace/tools/grass_lab.py`(Lab ΔE + tint 시뮬 + 해시배치 몽타주).
+
+**렌더 기준 검증(팀리드 완료 기준 — 실행 중 헤드리스 Chrome 9222):** 실제 게임 페이지(http://127.0.0.1:8234) 컨텍스트에서 real `tilemap.buildBackground`로 5레벨 배경을 real tint·로드된 에셋으로 렌더해 PNG 캡처(`_workspace/03_render_stage{1-5}.png`), 순수 잔디 셀(초록지배 픽셀 ≥90%, 길·전이·deco 셀 제외) per-tile Lab ΔE(중앙값 대비) 계측:
+
+| 스테이지 | tint | before(playtester) | after(렌더 계측) |
+|---|---|---|---|
+| 1 수정 골짜기 | 없음 | maxΔE 6.8, 초과 0% | maxΔE **6.8**, 0/117 PASS |
+| 2 덤불 갈림길 | #d9a441 a0.12 | maxΔE 45.4, 초과 11.8% | maxΔE **6.6**, 0/93 PASS |
+| 3 뒤엉킨 길 | #3a7d8c a0.16 | maxΔE ~26 | maxΔE **6.1**, 0/102 PASS |
+| 4 비좁은 관문 | #3d4a6b a0.24 | 육안 최악 | maxΔE **5.9**, 0/89 PASS |
+| 5 최후의 능선 | #5a1d3a a0.32 | maxΔE 26, 초과 10.1% | maxΔE **5.9**, 0/71 PASS |
+
+- **방법론 검증:** 렌더 계측 stage1 = 6.8로 playtester 실측 6.8과 정확히 일치 → 순수잔디 필터가 동일 대상 격리 확인. stage2~5가 stage1급(≤6.8)으로 수렴 = 패치워크 소멸.
+- 육안(렌더 PNG): 전 스테이지 밝은 변형 블록 소멸, tint별 색조만 균질 적용. 도구 `_workspace/tools/{render_check.mjs,render_measure.py}`.
+
+| 회차 | 일시 | 내용 |
+|---|---|---|
+| 5 (v5.1) | 2026-07-19 | 잔디 변형 clover/flower whole-tile 분포 하모나이즈 — 필드 패치워크 제거(ΔE 6.8→1.0, 2.5→0.5). 평균색 지표가 놓친 밝기 캐릭터 편차가 원인, tint·deco outlier는 무관. 키·규격 불변. |

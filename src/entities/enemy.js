@@ -92,6 +92,10 @@ export class Enemy {
     /** 진행 방향 rad — 스프라이트 회전용. 이동 전 기본 0(우향). */
     this.angle = 0;
 
+    // v5 시각 상태 계약(§17.3) — identity 초기화. draw가 변환에 반영만, update는 불가지.
+    //   fx(tween 파사드)가 이벤트 구독(enemy:spawned→popIn 등)으로 이 필드를 트윈한다.
+    this.vis = { sx: 1, sy: 1, rot: 0, alpha: 1, ox: 0, oy: 0 };
+
     const start = positionAt(0);
     this.x = start.x;
     this.y = start.y;
@@ -134,17 +138,23 @@ export class Enemy {
   /**
    * 걷기 프레임(개체 누적 시간·진행 방향 회전) + HP바(비회전).
    * 슬로우 틴트는 fx 소관(slowed 플래그 노출만). 상태 변경 금지.
+   * v5(§17.3): vis를 변환에 반영만 — 회전은 진행각에 가산(rotate(angle+vis.rot)), alpha는 곱셈 합성.
+   *   update는 vis를 건드리지 않으므로 headless sim에선 identity 그대로다. HP바는 vis 변환 밖(비회전).
    * @param {CanvasRenderingContext2D} ctx
    */
   draw(ctx) {
     const size = this.def.size;
+    const vis = this.vis;
     const { image, atlas } = resolveAnim(this.def.assetKey + '_walk', this.def.assetKey);
     const seqWalk = (atlas.sequences && atlas.sequences.walk) || [0];
     const frame = seqWalk[Math.floor(this.animTime * atlas.fps) % seqWalk.length];
 
+    // §17.3 draw 적용 규칙: translate(ox/oy) → scale(sx/sy) → rotate(angle+rot) → globalAlpha*=alpha.
     ctx.save();
-    ctx.translate(this.x, this.y);
-    ctx.rotate(this.angle);
+    ctx.translate(this.x + vis.ox, this.y + vis.oy);
+    ctx.scale(vis.sx, vis.sy);
+    ctx.rotate(this.angle + vis.rot);
+    ctx.globalAlpha *= vis.alpha;
     ctx.drawImage(
       image,
       frame * atlas.frameW, 0, atlas.frameW, atlas.frameH,

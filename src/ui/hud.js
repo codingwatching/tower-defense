@@ -13,6 +13,7 @@
 import { on, emit } from '../core/events.js';
 import { getGold, getLives } from '../systems/economy.js';
 import { WAVES } from '../data/waves.js';
+import { countUp, snapCount } from './anim.js';
 
 /** 이 값 이하이면 라이프 표시가 경고(점멸) 상태가 된다. */
 const LOW_LIVES = 5;
@@ -26,6 +27,16 @@ let lastScore = 0;
 let waveTotal = 10;
 let multiplier = 1;
 let muted = false;
+
+// (v5) 표시 전용 카운트업 상태 — 실제 골드/점수 값은 lastGold/lastScore(이벤트 값)가 진실이고,
+// 아래 shown은 화면에 굴러가는 표시 카운터일 뿐이다(§17.7 순수 시각).
+const goldCounter = { shown: 0, tween: null };
+const scoreCounter = { shown: 0, tween: null };
+
+/** 점수 천단위 구분 표기(카운트업 포맷터). */
+function fmtScore(n) {
+  return n.toLocaleString('ko-KR');
+}
 
 function num(v, fallback) {
   return Number.isFinite(v) ? v : fallback;
@@ -46,9 +57,11 @@ function makeStat(container, label) {
   return container.querySelector('.hud-value');
 }
 
-function setGold(gold) {
+function setGold(gold, snap = false) {
   lastGold = num(gold, lastGold);
-  goldValueEl.textContent = String(lastGold);
+  // 표시만 카운트업(outCubic). 판 시작(snap)은 이전 판 값에서 굴리지 않고 즉시 반영.
+  if (snap) snapCount(goldValueEl, goldCounter, lastGold, String);
+  else countUp(goldValueEl, goldCounter, lastGold, String);
 }
 
 function setLives(lives) {
@@ -61,10 +74,11 @@ function setWave(index) {
   waveValueEl.textContent = `${num(index, 0)}/${waveTotal}`;
 }
 
-function setScore(score) {
+function setScore(score, snap = false) {
   if (!scoreValueEl) return;
   lastScore = num(score, lastScore);
-  scoreValueEl.textContent = lastScore.toLocaleString('ko-KR');
+  if (snap) snapCount(scoreValueEl, scoreCounter, lastScore, fmtScore);
+  else countUp(scoreValueEl, scoreCounter, lastScore, fmtScore);
 }
 
 function setWaveButton(ready) {
@@ -100,7 +114,7 @@ export function initHud() {
 
   waveTotal = WAVES.length || 10;
   setWave(0);
-  setScore(0);
+  setScore(0, true);
   setWaveButton(true);
   btnSpeed.textContent = '배속 1x';
   btnMute.textContent = '소리 켬';
@@ -127,10 +141,10 @@ export function initHud() {
   });
 
   on('game:started', () => {
-    setGold(num(getGold(), lastGold));
+    setGold(num(getGold(), lastGold), true); // 판 시작 골드는 스냅(이전 판에서 굴리지 않음)
     setLives(num(getLives(), lastLives));
     setWave(0);
-    setScore(0); // (v3) 스테이지 진입마다 점수 0 리셋 — score.js와 동일 트리거(§14.2)
+    setScore(0, true); // (v3) 스테이지 진입마다 점수 0 리셋 — score.js와 동일 트리거(§14.2)
     if (countdownEl) countdownEl.textContent = '';
     setWaveButton(true);
   });

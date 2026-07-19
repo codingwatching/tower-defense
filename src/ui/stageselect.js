@@ -25,6 +25,7 @@ import { getBestScore, isUnlocked, getUnlockedCount } from '../systems/progress.
 // (v3) map-designer가 LEVELS를 아직 추가 중일 수 있으므로 namespace import로 안전 접근한다
 // (미존재 export가 링크타임 크래시를 내지 않도록 — main.js resolveLevels와 동일 패턴, §15 회귀 보존).
 import * as levelsData from '../data/levels.js';
+import { fadeInScreen, fadeOutScreen, shakeX } from './anim.js';
 
 /** 미니맵 타일 1칸의 내부 렌더 크기(px). CSS width:100%가 카드 폭에 맞춰 축소한다. */
 const CELL = 14;
@@ -61,14 +62,6 @@ function fmtScore(v) {
 /** 스테이지 i가 클리어됐는가 = 다음 스테이지가 해금됨(§14.3 해금 규칙 역산). 마지막 스테이지는 판정 불가→false. */
 function isCleared(i) {
   return i + 1 < getUnlockedCount();
-}
-
-/** 같은 클래스 재부여로 흔들림 애니메이션 재시작(reflow 트릭) — 잠긴 카드 탭 피드백. */
-function shake(el) {
-  if (!el) return;
-  el.classList.remove('shake');
-  void el.offsetWidth;
-  el.classList.add('shake');
 }
 
 /**
@@ -167,7 +160,7 @@ function createCard(level, i) {
 
   el.addEventListener('click', () => {
     if (!isUnlocked(i)) {
-      shake(el); // 잠김: 명시적 피드백(사회성 정책 — 모든 상태 변화는 시각 피드백)
+      shakeX(el); // 잠김: 명시적 피드백(사회성 정책 — 모든 상태 변화는 시각 피드백). (v5) anime.js 흔들림
       return;
     }
     emit('ui:stage-selected', { stageIndex: i });
@@ -253,14 +246,14 @@ export function refreshStageSelect() {
   for (const card of cards) refreshCard(card);
 }
 
-/** 화면 표시 + 최신 진행도 반영. */
+/** 화면 표시 + 최신 진행도 반영. (v5) 페이드 인(outExpo) — 표시 상태는 fadeInScreen이 .hidden 해제로 확정. */
 function showStageSelect() {
   if (!rootEl) return;
   refreshStageSelect();
-  rootEl.classList.remove('hidden');
+  fadeInScreen(rootEl);
 }
 
-/** 화면 숨김. */
+/** 화면 숨김. (v5) 페이드 아웃 후 .hidden 부착(트윈 실패해도 즉시 숨김). */
 function hideStageSelect() {
-  if (rootEl) rootEl.classList.add('hidden');
+  fadeOutScreen(rootEl);
 }

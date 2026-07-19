@@ -28,3 +28,10 @@
 | 2026-07-19 | 3D 전환·애니메이션 강화·지형 고도화 라우팅 추가 | skills/td-orchestrator | v3 비주얼 업그레이드 지원 |
 | 2026-07-19 | "entities/systems 변경 시 sim.mjs 게이트 포함 + 로더는 draw 전유" 규약 추가 | skills/td-code-standards | v4 D35-1: update 핫패스 getAnim 호출로 헤드리스 sim 크래시 |
 | 2026-07-19 | "생성+즉시 후처리 단일 잡" 권장·1행×8열 시트 변형 허용 | skills/td-asset-pipeline | v4 실증: 통지 지연 53분 스톨·2행 그리드보다 1행×8열이 안정 |
+| 2026-07-19 | 절차적 트윈 규약(anime.js v4 벤더링·vis 계약·tween 파사드·import 경계) 신설 + 외부 라이브러리 금지에 벤더링 예외 | skills/td-code-standards | 시트 프레임 교체만으론 모션이 끊김 — animejs 자연화 요구 (v5) |
+| 2026-07-19 | 타일 팔레트 락 §7.5 + harmonize_palette.py 번들 | skills/td-asset-pipeline | 타일 색상 편차 패치워크 보완 요구 (v5) |
+| 2026-07-19 | 애니메이션 자연화·타일 색상 일관성 라우팅 추가 | skills/td-orchestrator | v5 지원 |
+| 2026-07-19 | 역할 보강 (트윈 파사드/벤더링·일시정지 연동/vis 계약/UI 트랜지션/팔레트 락) | agents/{fx-dev,engine-dev,entity-dev,ui-dev,asset-artist} | v5 지원 |
+| 2026-07-19 | §7.5 세그먼트 하모나이즈 승격 (harmonize_segmented·tile_seam_check 번들, 2재질 타일 whole-tile 판정 금지) | skills/td-asset-pipeline | v5 실증: 2재질 타일에 whole-tile 매칭 시 지표는 PASS인데 잔디 오염 (거짓 합격 함정) |
+| 2026-07-19 | "레이어 번호는 계약 화이트리스트 전용, 미승인 번호 유통 금지" 규칙 추가 | skills/td-code-standards | v5 실증: 미승인 레이어 18 권장 → 15→18→15 왕복, 5개 에이전트 정정 파급 |
+| 2026-07-19 | §7.5 필드 타일 분포 지표 승격 (grass_lab.py 번들 — Lab ΔE·해시배치 몽타주·tint 시뮬, JND 기준) | skills/td-asset-pipeline | v5 실증: 평균색 ΔE 2.5 타일이 밝기 분포 차로 필드에서 튐 (평균 지표 사각) |

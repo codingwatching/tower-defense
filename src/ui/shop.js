@@ -22,6 +22,7 @@ import { getAnim, seqFrames } from '../core/assets.js';
 import { getGold } from '../systems/economy.js';
 import { TOWERS } from '../data/towers.js';
 import { enterPlacementMode, cancelPlacementMode } from './placement.js';
+import { shakeX } from './anim.js';
 
 /** 카드 툴팁용 역할 한 줄 (UI 카피 — 수치 아님). */
 const ROLE_HINT = {
@@ -37,13 +38,6 @@ let lastGold = 0;
 
 function num(v, fallback) {
   return Number.isFinite(v) ? v : fallback;
-}
-
-function flash(el, cls) {
-  if (!el) return;
-  el.classList.remove(cls);
-  void el.offsetWidth;
-  el.classList.add(cls);
 }
 
 function costOf(type) {
@@ -153,7 +147,7 @@ function onShopClick(e) {
 
   if (btn.disabled) {
     emit('ui:error', { reason: 'gold' });
-    flash(btn, 'shake');
+    shakeX(btn); // (v5) 골드 부족 흔들림 강화 — anime.js 탄성 감쇠(태스크 #6)
     return;
   }
 

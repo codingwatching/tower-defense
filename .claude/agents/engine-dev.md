@@ -28,6 +28,7 @@ model: opus
 2. 에셋 로더의 폴백 체인 구현 — 이미지 미로딩 시 단색 도형 플레이스홀더, 불투명 배경 이미지에 대한 크로마키(#FF00FF) 제거, 스프라이트 아틀라스(스트립 PNG+JSON) 로드와 `getAnim(key)` 강등 체인, **멀티 시퀀스 지원**(요청 시퀀스가 아틀라스에 없으면 첫 시퀀스로 강등 — td-code-standards "시퀀스 폴백")
 3. 모바일 대응 코어 — Pointer Events 통합 입력, 캔버스 DPR 스케일링과 CSS 반응형 좌표 역보정 (td-code-standards 모바일/터치 규약)
 3-1. 렌더러의 terrain-anim 레이어(1.5) 지원 — 배경 캐시와 엔티티 사이에 움직이는 지형 요소를 그릴 자리를 제공 (td-code-standards 지형 레이어 규약)
+3-2. **anime.js 벤더링 (v5)** — `vendor/anime.esm.min.js` 단일 파일 확보(버전 주석·실제 export 형태 확인), main 일시정지 상태 머신에 tween 파사드 `pauseAll/resumeAll` 연동 (td-code-standards "절차적 트윈 규약")
 4. `src/main.js` — 부트스트랩, 게임 상태 머신(로딩→타이틀→플레이→일시정지→승리/패배), 전체 모듈 조립
 5. 통합 시점에 타 모듈을 루프에 연결
 
